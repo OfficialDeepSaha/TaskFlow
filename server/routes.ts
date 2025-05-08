@@ -3,8 +3,9 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
 import { insertTaskSchema, updateTaskSchema } from "@shared/schema";
-import { TaskPriority, TaskStatus } from "@shared/schema";
+import { TaskPriority, TaskStatus, UserRole } from "@shared/schema";
 import { ZodError } from "zod";
+import { WebSocketServer, WebSocket } from "ws";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes
@@ -53,6 +54,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
       
       const task = await storage.createTask(taskData);
+      
+      // Send real-time notification if task is assigned to someone
+      if (task.assignedToId && task.assignedToId !== userId) {
+        const creator = req.user!;
+        const notification = await storage.createNotification({
+          message: `${creator.name} assigned you a new task: ${task.title}`,
+          userId: task.assignedToId,
+          taskId: task.id,
+          read: false
+        });
+        
+        // Send WebSocket notification if available
+        if (app.locals.sendNotification) {
+          app.locals.sendNotification(task.assignedToId, notification);
+        }
+      }
+      
       res.status(201).json(task);
     } catch (error) {
       if (error instanceof ZodError) {
@@ -84,6 +102,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const taskData = updateTaskSchema.parse(req.body);
       const updatedTask = await storage.updateTask(taskId, taskData);
+      
+      // Send real-time notification if task assignee has changed
+      if (taskData.assignedToId && 
+          taskData.assignedToId !== task.assignedToId && 
+          taskData.assignedToId !== req.user!.id) {
+        
+        const creator = req.user!;
+        const notification = await storage.createNotification({
+          message: `${creator.name} assigned you a task: ${updatedTask.title}`,
+          userId: taskData.assignedToId,
+          taskId: updatedTask.id,
+          read: false
+        });
+        
+        // Send WebSocket notification if available
+        if (app.locals.sendNotification) {
+          app.locals.sendNotification(taskData.assignedToId, notification);
+        }
+      }
+      
+      // Send notification when task status is changed
+      if (taskData.status && 
+          taskData.status !== task.status && 
+          task.assignedToId && 
+          task.assignedToId !== req.user!.id) {
+        
+        const updater = req.user!;
+        const statusText = taskData.status === 'completed' ? 'completed' : 'updated the status of';
+        
+        const notification = await storage.createNotification({
+          message: `${updater.name} ${statusText} task: ${updatedTask.title}`,
+          userId: task.assignedToId,
+          taskId: updatedTask.id,
+          read: false
+        });
+        
+        // Send WebSocket notification if available
+        if (app.locals.sendNotification && task.assignedToId) {
+          app.locals.sendNotification(task.assignedToId, notification);
+        }
+      }
       
       res.json(updatedTask);
     } catch (error) {
@@ -247,6 +306,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Create an HTTP server
   const httpServer = createServer(app);
+  
+  // Set up WebSocket server for real-time notifications
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  
+  // Store active connections by user ID
+  const clients = new Map<number, WebSocket[]>();
+  
+  wss.on('connection', (ws) => {
+    console.log('New WebSocket connection');
+    let userId: number | null = null;
+    
+    // Handle messages from clients
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        
+        // Handle authentication
+        if (data.type === 'auth') {
+          userId = parseInt(data.userId);
+          
+          // Store the connection for this user
+          if (!clients.has(userId)) {
+            clients.set(userId, []);
+          }
+          clients.get(userId)?.push(ws);
+          
+          console.log(`User ${userId} connected via WebSocket`);
+          
+          // Send confirmation
+          ws.send(JSON.stringify({ type: 'auth_success' }));
+        }
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
+      }
+    });
+    
+    // Handle disconnection
+    ws.on('close', () => {
+      if (userId) {
+        // Remove this connection from the client list
+        const userConnections = clients.get(userId) || [];
+        const index = userConnections.indexOf(ws);
+        if (index !== -1) {
+          userConnections.splice(index, 1);
+        }
+        
+        // If no more connections for this user, remove the user entry
+        if (userConnections.length === 0) {
+          clients.delete(userId);
+        }
+        
+        console.log(`User ${userId} disconnected from WebSocket`);
+      }
+    });
+  });
+  
+  // Define a function to send notifications to users via WebSocket
+  // This can be used from other parts of the application
+  app.locals.sendNotification = (userId: number, notification: any) => {
+    const userConnections = clients.get(userId) || [];
+    
+    // Send the notification to all connections for this user
+    userConnections.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({
+          type: 'notification',
+          data: notification
+        }));
+      }
+    });
+  };
+  
   return httpServer;
 }

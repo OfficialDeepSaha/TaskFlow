@@ -1,4 +1,11 @@
-import { users, tasks, notifications, type User, type InsertUser, type Task, type InsertTask, type UpdateTask, type Notification, type InsertNotification } from "@shared/schema";
+import { 
+  users, tasks, notifications, auditLogs, 
+  type User, type InsertUser, 
+  type Task, type InsertTask, type UpdateTask, 
+  type Notification, type InsertNotification,
+  type AuditLog, type InsertAuditLog,
+  AuditAction, AuditEntity, UserRole, RecurringPattern
+} from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import connectPg from "connect-pg-simple";
@@ -30,11 +37,16 @@ export interface IStorage {
   getTasksByCreator(userId: number): Promise<Task[]>;
   getOverdueTasks(userId: number): Promise<Task[]>;
   searchTasks(query: string, filters?: TaskFilters): Promise<Task[]>;
+  createRecurringTaskInstances(task: Task): Promise<Task[]>; // For handling recurring tasks
   
   // Notification operations
   createNotification(notification: InsertNotification): Promise<Notification>;
   getNotificationsByUser(userId: number): Promise<Notification[]>;
   markNotificationAsRead(id: number): Promise<boolean>;
+  
+  // Audit logging operations
+  createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
+  getAuditLogs(entityType?: string, entityId?: number, userId?: number): Promise<AuditLog[]>;
   
   // Session store
   sessionStore: any; // Express SessionStore
