@@ -49,6 +49,11 @@ export interface IStorage {
   createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
   getAuditLogs(entityType?: string, entityId?: number, userId?: number): Promise<AuditLog[]>;
   
+  // Task mood reactions operations
+  createTaskMoodReaction(moodReaction: InsertTaskMoodReaction): Promise<TaskMoodReaction>;
+  getTaskMoodReactions(taskId: number): Promise<TaskMoodReaction[]>;
+  getUserMoodReactions(userId: number): Promise<TaskMoodReaction[]>;
+  
   // Session store
   sessionStore: any; // Express SessionStore
 }
@@ -66,10 +71,12 @@ export class MemStorage implements IStorage {
   private tasks: Map<number, Task>;
   private notifications: Map<number, Notification>;
   private auditLogs: Map<number, AuditLog>;
+  private taskMoodReactions: Map<number, TaskMoodReaction>;
   private userCurrentId: number;
   private taskCurrentId: number;
   private notificationCurrentId: number;
   private auditLogCurrentId: number;
+  private moodReactionCurrentId: number;
   sessionStore: any; // Express SessionStore
 
   constructor() {
@@ -77,10 +84,12 @@ export class MemStorage implements IStorage {
     this.tasks = new Map();
     this.notifications = new Map();
     this.auditLogs = new Map();
+    this.taskMoodReactions = new Map();
     this.userCurrentId = 1;
     this.taskCurrentId = 1;
     this.notificationCurrentId = 1;
     this.auditLogCurrentId = 1;
+    this.moodReactionCurrentId = 1;
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000, // 24 hours
     });
