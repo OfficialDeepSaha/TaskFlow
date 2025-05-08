@@ -3,9 +3,14 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
 import { insertTaskSchema, updateTaskSchema } from "@shared/schema";
-import { TaskPriority, TaskStatus, UserRole, AuditEntity, AuditAction, Task } from "@shared/schema";
+import { TaskPriority, TaskStatus, UserRole, AuditEntity, AuditAction, Task, NotificationChannel } from "@shared/schema";
 import { ZodError } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
+import { 
+  sendTaskAssignmentNotification, 
+  sendTaskStatusUpdateNotification, 
+  sendTaskCompletionNotification 
+} from "./emailService";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Set up authentication routes
