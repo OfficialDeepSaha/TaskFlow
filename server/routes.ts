@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
 import { insertTaskSchema, updateTaskSchema } from "@shared/schema";
-import { TaskPriority, TaskStatus, UserRole, AuditEntity, AuditAction } from "@shared/schema";
+import { TaskPriority, TaskStatus, UserRole, AuditEntity, AuditAction, Task } from "@shared/schema";
 import { ZodError } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
 
@@ -367,6 +367,233 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "Error updating notification" });
+    }
+  });
+  
+  // Update user notification preferences
+  app.patch("/api/users/notification-preferences", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    
+    try {
+      const userId = req.user!.id;
+      const preferences = req.body;
+      
+      // Validate the preferences
+      if (!preferences || typeof preferences !== 'object') {
+        return res.status(400).json({ message: "Invalid notification preferences" });
+      }
+      
+      // Update user preferences
+      const updated = await storage.updateUserNotificationPreferences(userId, preferences);
+      
+      if (!updated) {
+        return res.status(404).json({ message: "Failed to update notification preferences" });
+      }
+      
+      res.json({ success: true, preferences });
+    } catch (error) {
+      res.status(500).json({ message: "Error updating notification preferences" });
+    }
+  });
+  
+  // Analytics endpoints
+  
+  // Get task stats (counts by status, priority, etc.)
+  app.get("/api/analytics/task-stats", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    
+    try {
+      const userId = req.user!.id;
+      const isAdmin = req.user!.role === 'admin';
+      const isManager = req.user!.role === 'manager';
+      
+      // Get tasks (all for admin/manager, only assigned/created for regular users)
+      let tasks;
+      if (isAdmin || isManager) {
+        tasks = await storage.getAllTasks();
+      } else {
+        // For regular users, combine their created and assigned tasks
+        const createdTasks = await storage.getTasksByCreator(userId);
+        const assignedTasks = await storage.getTasksByAssignee(userId);
+        
+        // Combine and remove duplicates
+        const taskMap = new Map<number, Task>();
+        [...createdTasks, ...assignedTasks].forEach(task => {
+          taskMap.set(task.id, task);
+        });
+        tasks = Array.from(taskMap.values());
+      }
+      
+      // Calculate statistics
+      const totalTasks = tasks.length;
+      const completedTasks = tasks.filter(t => t.status === 'completed').length;
+      const inProgressTasks = tasks.filter(t => t.status === 'in_progress').length;
+      const notStartedTasks = tasks.filter(t => t.status === 'not_started').length;
+      
+      const now = new Date();
+      const overdueTasks = tasks.filter(t => 
+        t.status !== 'completed' && 
+        t.dueDate && 
+        new Date(t.dueDate) < now
+      ).length;
+      
+      // Tasks by priority
+      const highPriorityTasks = tasks.filter(t => t.priority === 'high').length;
+      const mediumPriorityTasks = tasks.filter(t => t.priority === 'medium').length;
+      const lowPriorityTasks = tasks.filter(t => t.priority === 'low').length;
+      
+      // Completion rate
+      const completionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+      
+      // Return statistics
+      res.json({
+        totalTasks,
+        completedTasks,
+        inProgressTasks,
+        notStartedTasks,
+        overdueTasks,
+        highPriorityTasks,
+        mediumPriorityTasks,
+        lowPriorityTasks,
+        completionRate: Math.round(completionRate * 100) / 100, // Round to 2 decimal places
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching task statistics" });
+    }
+  });
+  
+  // Get user performance metrics
+  app.get("/api/analytics/user-performance", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    
+    // Only admin and managers can see all user performance metrics
+    if (req.user!.role !== 'admin' && req.user!.role !== 'manager') {
+      return res.status(403).json({ message: "You don't have permission to access this data" });
+    }
+    
+    try {
+      const users = await storage.getAllUsers();
+      const tasks = await storage.getAllTasks();
+      
+      // Calculate metrics for each user
+      const userMetrics = await Promise.all(
+        users.map(async (user) => {
+          // Count tasks created by this user
+          const createdTasks = tasks.filter(t => t.createdById === user.id);
+          const totalCreated = createdTasks.length;
+          
+          // Count tasks assigned to this user
+          const assignedTasks = tasks.filter(t => t.assignedToId === user.id);
+          const totalAssigned = assignedTasks.length;
+          
+          // Count completed tasks
+          const completedTasks = assignedTasks.filter(t => t.status === 'completed').length;
+          
+          // Count overdue tasks
+          const now = new Date();
+          const overdueTasks = assignedTasks.filter(t => 
+            t.status !== 'completed' && 
+            t.dueDate && 
+            new Date(t.dueDate) < now
+          ).length;
+          
+          // Calculate completion rate
+          const completionRate = totalAssigned > 0 
+            ? (completedTasks / totalAssigned) * 100 
+            : 0;
+          
+          // Calculate average completion time
+          const auditLogs = await storage.getAuditLogs(
+            AuditEntity.TASK, 
+            undefined, 
+            user.id
+          );
+          
+          // Skip private user data
+          return {
+            userId: user.id,
+            name: user.name,
+            totalCreated,
+            totalAssigned,
+            completedTasks,
+            overdueTasks,
+            completionRate: Math.round(completionRate * 100) / 100, // Round to 2 decimal places
+          };
+        })
+      );
+      
+      res.json(userMetrics);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching user performance metrics" });
+    }
+  });
+  
+  // Get overdue task trend (for charts)
+  app.get("/api/analytics/overdue-trend", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    
+    try {
+      const userId = req.user!.id;
+      const isAdmin = req.user!.role === 'admin';
+      const isManager = req.user!.role === 'manager';
+      
+      // Get tasks (all for admin/manager, only assigned/created for regular users)
+      let tasks;
+      if (isAdmin || isManager) {
+        tasks = await storage.getAllTasks();
+      } else {
+        // For regular users, combine their created and assigned tasks
+        const createdTasks = await storage.getTasksByCreator(userId);
+        const assignedTasks = await storage.getTasksByAssignee(userId);
+        
+        // Combine and remove duplicates
+        const taskMap = new Map<number, Task>();
+        [...createdTasks, ...assignedTasks].forEach(task => {
+          taskMap.set(task.id, task);
+        });
+        tasks = Array.from(taskMap.values());
+      }
+      
+      // Get overdue tasks
+      const now = new Date();
+      const overdueTasks = tasks.filter(t => 
+        t.status !== 'completed' && 
+        t.dueDate && 
+        new Date(t.dueDate) < now
+      );
+      
+      // Group by day for the past 4 weeks
+      const fourWeeksAgo = new Date();
+      fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+      
+      // Initialize data for each day
+      const trendData: { date: string; count: number }[] = [];
+      for (let i = 0; i < 28; i++) {
+        const date = new Date(fourWeeksAgo);
+        date.setDate(date.getDate() + i);
+        trendData.push({
+          date: date.toISOString().split('T')[0],
+          count: 0
+        });
+      }
+      
+      // Count overdue tasks for each day
+      overdueTasks.forEach(task => {
+        if (task.dueDate) {
+          const dueDate = new Date(task.dueDate);
+          if (dueDate >= fourWeeksAgo && dueDate <= now) {
+            const dateStr = dueDate.toISOString().split('T')[0];
+            const index = trendData.findIndex(d => d.date === dateStr);
+            if (index !== -1) {
+              trendData[index].count++;
+            }
+          }
+        }
+      });
+      
+      res.json(trendData);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching overdue trend data" });
     }
   });
   

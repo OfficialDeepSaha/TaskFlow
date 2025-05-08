@@ -26,6 +26,7 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
+  updateUserNotificationPreferences(userId: number, preferences: any): Promise<boolean>;
   
   // Task operations
   getTask(id: number): Promise<Task | undefined>;
@@ -122,6 +123,20 @@ export class MemStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return Array.from(this.users.values());
+  }
+  
+  async updateUserNotificationPreferences(userId: number, preferences: any): Promise<boolean> {
+    const user = this.users.get(userId);
+    if (!user) return false;
+    
+    // Update the user's notification preferences
+    user.notificationPreferences = {
+      ...user.notificationPreferences,
+      ...preferences
+    };
+    
+    this.users.set(userId, user);
+    return true;
   }
 
   // Task operations
@@ -436,6 +451,30 @@ export class DatabaseStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return await this.db.select().from(users);
+  }
+  
+  async updateUserNotificationPreferences(userId: number, preferences: any): Promise<boolean> {
+    try {
+      const user = await this.getUser(userId);
+      if (!user) return false;
+      
+      // Update notification preferences
+      const updatedPreferences = {
+        ...user.notificationPreferences,
+        ...preferences
+      };
+      
+      // Update the user in the database
+      const result = await this.db.update(users)
+        .set({ notificationPreferences: updatedPreferences })
+        .where(eq(users.id, userId))
+        .returning();
+      
+      return result.length > 0;
+    } catch (error) {
+      console.error('Error updating user notification preferences:', error);
+      return false;
+    }
   }
 
   // Task operations
