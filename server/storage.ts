@@ -64,18 +64,22 @@ export class MemStorage implements IStorage {
   private users: Map<number, User>;
   private tasks: Map<number, Task>;
   private notifications: Map<number, Notification>;
+  private auditLogs: Map<number, AuditLog>;
   private userCurrentId: number;
   private taskCurrentId: number;
   private notificationCurrentId: number;
+  private auditLogCurrentId: number;
   sessionStore: any; // Express SessionStore
 
   constructor() {
     this.users = new Map();
     this.tasks = new Map();
     this.notifications = new Map();
+    this.auditLogs = new Map();
     this.userCurrentId = 1;
     this.taskCurrentId = 1;
     this.notificationCurrentId = 1;
+    this.auditLogCurrentId = 1;
     this.sessionStore = new MemoryStore({
       checkPeriod: 86400000, // 24 hours
     });
@@ -285,6 +289,106 @@ export class MemStorage implements IStorage {
     this.notifications.set(id, notification);
     return true;
   }
+
+  // Audit log operations
+  async createAuditLog(insertLog: InsertAuditLog): Promise<AuditLog> {
+    const id = this.auditLogCurrentId++;
+    const now = new Date();
+    const log: AuditLog = {
+      ...insertLog,
+      id,
+      timestamp: now,
+      details: insertLog.details || null
+    };
+    
+    this.auditLogs.set(id, log);
+    return log;
+  }
+
+  async getAuditLogs(entityType?: string, entityId?: number, userId?: number): Promise<AuditLog[]> {
+    let logs = Array.from(this.auditLogs.values());
+    
+    if (entityType) {
+      logs = logs.filter(log => log.entityType === entityType);
+    }
+    
+    if (entityId) {
+      logs = logs.filter(log => log.entityId === entityId);
+    }
+    
+    if (userId) {
+      logs = logs.filter(log => log.userId === userId);
+    }
+    
+    // Sort by timestamp, most recent first
+    return logs.sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
+  }
+
+  // Recurring task operations
+  async createRecurringTaskInstances(task: Task): Promise<Task[]> {
+    // Only create recurring instances for tasks that are set as recurring
+    if (!task.isRecurring || task.recurringPattern === RecurringPattern.NONE) {
+      return [];
+    }
+    
+    const recurringEndDate = task.recurringEndDate || null;
+    if (!task.dueDate || (recurringEndDate && new Date(task.dueDate) > new Date(recurringEndDate))) {
+      return [];
+    }
+    
+    const createdTasks: Task[] = [];
+    const startDate = new Date(task.dueDate);
+    const endDate = recurringEndDate ? new Date(recurringEndDate) : new Date(startDate.getTime() + (90 * 24 * 60 * 60 * 1000)); // Default to 90 days
+    
+    let currentDate = new Date(startDate);
+    
+    // Advance to the next occurrence
+    switch (task.recurringPattern) {
+      case RecurringPattern.DAILY:
+        currentDate.setDate(currentDate.getDate() + 1);
+        break;
+      case RecurringPattern.WEEKLY:
+        currentDate.setDate(currentDate.getDate() + 7);
+        break;
+      case RecurringPattern.MONTHLY:
+        currentDate.setMonth(currentDate.getMonth() + 1);
+        break;
+    }
+    
+    // Create recurring instances until end date
+    while (currentDate <= endDate) {
+      const newTaskData: InsertTask = {
+        title: task.title,
+        description: task.description,
+        status: TaskStatus.NOT_STARTED, // Always start as not started
+        priority: task.priority,
+        dueDate: new Date(currentDate),
+        createdById: task.createdById,
+        assignedToId: task.assignedToId,
+        isRecurring: false, // Child tasks are not recurring themselves
+        recurringPattern: RecurringPattern.NONE,
+        parentTaskId: task.id
+      };
+      
+      const newTask = await this.createTask(newTaskData);
+      createdTasks.push(newTask);
+      
+      // Advance to the next occurrence
+      switch (task.recurringPattern) {
+        case RecurringPattern.DAILY:
+          currentDate.setDate(currentDate.getDate() + 1);
+          break;
+        case RecurringPattern.WEEKLY:
+          currentDate.setDate(currentDate.getDate() + 7);
+          break;
+        case RecurringPattern.MONTHLY:
+          currentDate.setMonth(currentDate.getMonth() + 1);
+          break;
+      }
+    }
+    
+    return createdTasks;
+  }
 }
 
 // Create a DatabaseStorage implementation for PostgreSQL
@@ -443,6 +547,101 @@ export class DatabaseStorage implements IStorage {
       .set({ read: true })
       .where(eq(notifications.id, id));
     return !!result;
+  }
+
+  // Audit log operations
+  async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
+    const result = await this.db.insert(auditLogs).values({
+      ...log,
+      timestamp: new Date()
+    }).returning();
+    return result[0];
+  }
+
+  async getAuditLogs(entityType?: string, entityId?: number, userId?: number): Promise<AuditLog[]> {
+    let query = this.db.select().from(auditLogs);
+    
+    // Build query with filters
+    if (entityType) {
+      query = query.where(eq(auditLogs.entityType, entityType));
+    }
+    
+    if (entityId) {
+      query = query.where(eq(auditLogs.entityId, entityId));
+    }
+    
+    if (userId) {
+      query = query.where(eq(auditLogs.userId, userId));
+    }
+    
+    // Sort by timestamp, most recent first
+    return await query.orderBy(desc(auditLogs.timestamp));
+  }
+
+  // Recurring task operations
+  async createRecurringTaskInstances(task: Task): Promise<Task[]> {
+    // Only create recurring instances for tasks that are set as recurring
+    if (!task.isRecurring || task.recurringPattern === RecurringPattern.NONE) {
+      return [];
+    }
+    
+    const recurringEndDate = task.recurringEndDate || null;
+    if (!task.dueDate || (recurringEndDate && new Date(task.dueDate) > new Date(recurringEndDate))) {
+      return [];
+    }
+    
+    const createdTasks: Task[] = [];
+    const startDate = new Date(task.dueDate);
+    const endDate = recurringEndDate ? new Date(recurringEndDate) : new Date(startDate.getTime() + (90 * 24 * 60 * 60 * 1000)); // Default to 90 days
+    
+    let currentDate = new Date(startDate);
+    
+    // Advance to the next occurrence
+    switch (task.recurringPattern) {
+      case RecurringPattern.DAILY:
+        currentDate.setDate(currentDate.getDate() + 1);
+        break;
+      case RecurringPattern.WEEKLY:
+        currentDate.setDate(currentDate.getDate() + 7);
+        break;
+      case RecurringPattern.MONTHLY:
+        currentDate.setMonth(currentDate.getMonth() + 1);
+        break;
+    }
+    
+    // Create recurring instances until end date
+    while (currentDate <= endDate) {
+      const newTaskData: InsertTask = {
+        title: task.title,
+        description: task.description,
+        status: TaskStatus.NOT_STARTED, // Always start as not started
+        priority: task.priority,
+        dueDate: new Date(currentDate),
+        createdById: task.createdById,
+        assignedToId: task.assignedToId,
+        isRecurring: false, // Child tasks are not recurring themselves
+        recurringPattern: RecurringPattern.NONE,
+        parentTaskId: task.id
+      };
+      
+      const newTask = await this.createTask(newTaskData);
+      createdTasks.push(newTask);
+      
+      // Advance to the next occurrence
+      switch (task.recurringPattern) {
+        case RecurringPattern.DAILY:
+          currentDate.setDate(currentDate.getDate() + 1);
+          break;
+        case RecurringPattern.WEEKLY:
+          currentDate.setDate(currentDate.getDate() + 7);
+          break;
+        case RecurringPattern.MONTHLY:
+          currentDate.setMonth(currentDate.getMonth() + 1);
+          break;
+      }
+    }
+    
+    return createdTasks;
   }
 }
 

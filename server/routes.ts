@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
 import { insertTaskSchema, updateTaskSchema } from "@shared/schema";
-import { TaskPriority, TaskStatus, UserRole } from "@shared/schema";
+import { TaskPriority, TaskStatus, UserRole, AuditEntity, AuditAction } from "@shared/schema";
 import { ZodError } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
 
@@ -55,6 +55,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const task = await storage.createTask(taskData);
       
+      // Create audit log for task creation
+      await storage.createAuditLog({
+        entityId: task.id,
+        entityType: AuditEntity.TASK,
+        action: AuditAction.CREATED,
+        userId: userId,
+        details: { taskTitle: task.title }
+      });
+      
       // Send real-time notification if task is assigned to someone
       if (task.assignedToId && task.assignedToId !== userId) {
         const creator = req.user!;
@@ -69,6 +78,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (app.locals.sendNotification) {
           app.locals.sendNotification(task.assignedToId, notification);
         }
+        
+        // Create audit log for task assignment
+        await storage.createAuditLog({
+          entityId: task.id,
+          entityType: AuditEntity.TASK,
+          action: AuditAction.ASSIGNED,
+          userId: userId,
+          details: { assignedToId: task.assignedToId, taskTitle: task.title }
+        });
+      }
+      
+      // If it's a recurring task, create future instances
+      if (task.isRecurring && task.recurringPattern !== 'none') {
+        await storage.createRecurringTaskInstances(task);
       }
       
       res.status(201).json(task);
@@ -102,6 +125,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const taskData = updateTaskSchema.parse(req.body);
       const updatedTask = await storage.updateTask(taskId, taskData);
+      
+      if (!updatedTask) {
+        return res.status(500).json({ message: "Error updating task" });
+      }
+      
+      // Create audit log for task update
+      const userId = req.user!.id;
+      
+      // Determine specific action type based on what was changed
+      let action = AuditAction.UPDATED;
+      if (taskData.status === 'completed' && task.status !== 'completed') {
+        action = AuditAction.COMPLETED;
+      } else if (taskData.status && taskData.status !== task.status) {
+        action = AuditAction.STATUS_CHANGED;
+      } else if (taskData.assignedToId && taskData.assignedToId !== task.assignedToId) {
+        action = AuditAction.ASSIGNED;
+      }
+      
+      await storage.createAuditLog({
+        entityId: task.id,
+        entityType: AuditEntity.TASK,
+        action,
+        userId,
+        details: { 
+          taskTitle: updatedTask.title,
+          changes: JSON.stringify(taskData)
+        }
+      });
       
       // Send real-time notification if task assignee has changed
       if (taskData.assignedToId && 
@@ -174,6 +225,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       await storage.deleteTask(taskId);
+      
+      // Create audit log for task deletion
+      const userId = req.user!.id;
+      await storage.createAuditLog({
+        entityId: taskId,
+        entityType: AuditEntity.TASK,
+        action: AuditAction.DELETED,
+        userId,
+        details: { 
+          taskTitle: task.title
+        }
+      });
+      
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ message: "Error deleting task" });
