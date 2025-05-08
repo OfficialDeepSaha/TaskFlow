@@ -12,6 +12,12 @@ export enum UserRole {
 // Create the enum in the database
 export const roleEnum = pgEnum('user_role', ['admin', 'manager', 'user']);
 
+// Notification channel preferences
+export enum NotificationChannel {
+  IN_APP = "in_app",
+  EMAIL = "email"
+}
+
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
@@ -20,6 +26,17 @@ export const users = pgTable("users", {
   role: text("role").notNull().default(UserRole.USER),
   lastActive: timestamp("last_active"),
   avatar: text("avatar"),
+  
+  // Notification preferences
+  notificationPreferences: json("notification_preferences").$type<{
+    channels: NotificationChannel[];
+    taskAssignment: boolean;
+    taskStatusUpdate: boolean;
+    taskCompletion: boolean;
+    taskDueSoon: boolean;
+    systemUpdates: boolean;
+  }>(),
+  email: text("email"),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -27,8 +44,29 @@ export const insertUserSchema = createInsertSchema(users).pick({
   name: true,
   password: true,
   role: true,
+  email: true,
+  notificationPreferences: true,
 }).extend({
   role: z.nativeEnum(UserRole).optional().default(UserRole.USER),
+  email: z.string().email().optional(),
+  notificationPreferences: z
+    .object({
+      channels: z.array(z.nativeEnum(NotificationChannel)).optional().default([NotificationChannel.IN_APP]),
+      taskAssignment: z.boolean().optional().default(true),
+      taskStatusUpdate: z.boolean().optional().default(true),
+      taskCompletion: z.boolean().optional().default(true),
+      taskDueSoon: z.boolean().optional().default(true),
+      systemUpdates: z.boolean().optional().default(true),
+    })
+    .optional()
+    .default({
+      channels: [NotificationChannel.IN_APP],
+      taskAssignment: true,
+      taskStatusUpdate: true,
+      taskCompletion: true,
+      taskDueSoon: true,
+      systemUpdates: true,
+    }),
 });
 
 // Task priority options

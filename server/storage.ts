@@ -4,7 +4,7 @@ import {
   type Task, type InsertTask, type UpdateTask, 
   type Notification, type InsertNotification,
   type AuditLog, type InsertAuditLog,
-  AuditAction, AuditEntity, UserRole, RecurringPattern, TaskStatus
+  AuditAction, AuditEntity, UserRole, RecurringPattern, TaskStatus, NotificationChannel
 } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
@@ -99,11 +99,22 @@ export class MemStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.userCurrentId++;
     const user: User = { 
-      ...insertUser, 
       id,
+      username: insertUser.username,
+      name: insertUser.name,
+      password: insertUser.password,
       role: insertUser.role || 'user',
       lastActive: new Date(),
-      avatar: null
+      avatar: null,
+      email: insertUser.email || null,
+      notificationPreferences: insertUser.notificationPreferences || {
+        channels: [NotificationChannel.IN_APP],
+        taskAssignment: true,
+        taskStatusUpdate: true,
+        taskCompletion: true,
+        taskDueSoon: true,
+        systemUpdates: true
+      }
     };
     this.users.set(id, user);
     return user;
@@ -360,7 +371,7 @@ export class MemStorage implements IStorage {
       const newTaskData: InsertTask = {
         title: task.title,
         description: task.description,
-        status: TaskStatus.NOT_STARTED, // Always start as not started
+        status: "not_started", // Always start as not started
         priority: task.priority,
         dueDate: new Date(currentDate),
         createdById: task.createdById,
@@ -614,7 +625,7 @@ export class DatabaseStorage implements IStorage {
       const newTaskData: InsertTask = {
         title: task.title,
         description: task.description,
-        status: TaskStatus.NOT_STARTED, // Always start as not started
+        status: "not_started", // Always start as not started
         priority: task.priority,
         dueDate: new Date(currentDate),
         createdById: task.createdById,

@@ -369,6 +369,195 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Error updating notification" });
     }
   });
+  
+  // Audit log routes
+  // Get audit logs with optional filters
+  app.get("/api/audit-logs", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    
+    // Only users with admin role can see all audit logs
+    // Regular users can only see logs related to their tasks
+    if (req.user!.role !== 'admin' && 
+        req.user!.role !== 'manager' && 
+        (!req.query.entityType || req.query.entityType !== 'task')) {
+      return res.status(403).json({ 
+        message: "You don't have permission to access all audit logs. You can only see logs for your tasks." 
+      });
+    }
+    
+    try {
+      // Extract filters from query params
+      const entityType = req.query.entityType as string | undefined;
+      const entityId = req.query.entityId ? parseInt(req.query.entityId as string) : undefined;
+      // For non-admin users, only show logs related to the current user
+      const userId = req.user!.role === 'admin' || req.user!.role === 'manager' 
+        ? (req.query.userId ? parseInt(req.query.userId as string) : undefined)
+        : req.user!.id;
+        
+      const logs = await storage.getAuditLogs(entityType, entityId, userId);
+      
+      // Get related user data to enrich the logs
+      const userIds = new Set(logs.map(log => log.userId));
+      const users = await Promise.all(
+        Array.from(userIds).map(id => storage.getUser(id))
+      );
+      const userMap = new Map(
+        users.filter(Boolean).map(user => [user!.id, user!])
+      );
+      
+      // Enrich logs with user data
+      const enrichedLogs = logs.map(log => ({
+        ...log,
+        user: userMap.get(log.userId) 
+          ? { id: userMap.get(log.userId)!.id, name: userMap.get(log.userId)!.name } 
+          : { id: log.userId, name: 'Unknown User' }
+      }));
+      
+      res.json(enrichedLogs);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching audit logs" });
+    }
+  });
+  
+  // Get activity timeline data (transformed audit logs for dashboard display)
+  app.get("/api/activity-timeline", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    
+    try {
+      // Get limit from query params (default to 10)
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+      
+      // For managers and admins, show all activities
+      // For regular users, show only activities related to them
+      const userId = req.user!.role === 'admin' || req.user!.role === 'manager' 
+        ? undefined 
+        : req.user!.id;
+      
+      // Get audit logs
+      const logs = await storage.getAuditLogs(undefined, undefined, userId);
+      
+      // Limit the number of logs
+      const limitedLogs = logs.slice(0, limit);
+      
+      // Get all user IDs referenced in the logs
+      const userIds = new Set(limitedLogs.map(log => log.userId));
+      
+      // Get task IDs referenced in the logs
+      const taskIds = new Set(
+        limitedLogs
+          .filter(log => log.entityType === AuditEntity.TASK)
+          .map(log => log.entityId)
+      );
+      
+      // Fetch users and tasks
+      const users = await Promise.all(
+        Array.from(userIds).map(id => storage.getUser(id))
+      );
+      const tasks = await Promise.all(
+        Array.from(taskIds).map(id => storage.getTask(id))
+      );
+      
+      // Create maps for quick lookup
+      const userMap = new Map(
+        users.filter(Boolean).map(user => [user!.id, user!])
+      );
+      const taskMap = new Map(
+        tasks.filter(Boolean).map(task => [task!.id, task!])
+      );
+      
+      // Transform logs into activity timeline format
+      const activities = limitedLogs.map(log => {
+        const user = userMap.get(log.userId);
+        const task = log.entityType === AuditEntity.TASK ? taskMap.get(log.entityId) : null;
+        
+        // Extract assignedTo user if available in the details
+        let assignedToUser = null;
+        if (log.action === AuditAction.ASSIGNED && log.details) {
+          // Type assertion for the details object which can contain different properties
+          const details = log.details as { assignedToId?: number };
+          if (details.assignedToId) {
+            assignedToUser = userMap.get(details.assignedToId) || null;
+          }
+        }
+        
+        return {
+          id: log.id,
+          type: log.action.toLowerCase(),
+          task: task ? {
+            id: task.id,
+            title: task.title,
+            status: task.status,
+            priority: task.priority,
+            dueDate: task.dueDate
+          } : null,
+          user: user ? {
+            id: user.id,
+            name: user.name,
+            avatar: user.avatar
+          } : { id: log.userId, name: "Unknown User", avatar: null },
+          timestamp: log.timestamp,
+          assignedTo: assignedToUser ? {
+            id: assignedToUser.id,
+            name: assignedToUser.name,
+            avatar: assignedToUser.avatar
+          } : null,
+          details: log.details
+        };
+      });
+      
+      res.json(activities);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching activity timeline" });
+    }
+  });
+  
+  // Get audit logs for a specific task
+  app.get("/api/tasks/:id/audit-logs", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    
+    try {
+      const taskId = parseInt(req.params.id);
+      const task = await storage.getTask(taskId);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      // Check if user has permission to view this task's logs
+      const userId = req.user!.id;
+      if (req.user!.role !== 'admin' && 
+          req.user!.role !== 'manager' && 
+          task.createdById !== userId && 
+          task.assignedToId !== userId) {
+        return res.status(403).json({ 
+          message: "You don't have permission to view this task's audit logs" 
+        });
+      }
+      
+      const logs = await storage.getAuditLogs(AuditEntity.TASK, taskId);
+      
+      // Get user data to enrich the logs
+      const userIds = new Set(logs.map(log => log.userId));
+      const users = await Promise.all(
+        Array.from(userIds).map(id => storage.getUser(id))
+      );
+      const userMap = new Map(
+        users.filter(Boolean).map(user => [user!.id, user!])
+      );
+      
+      // Enrich logs with user data
+      const enrichedLogs = logs.map(log => ({
+        ...log,
+        user: userMap.get(log.userId) 
+          ? { id: userMap.get(log.userId)!.id, name: userMap.get(log.userId)!.name } 
+          : { id: log.userId, name: 'Unknown User' }
+      }));
+      
+      res.json(enrichedLogs);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching task audit logs" });
+    }
+  });
 
   // Create an HTTP server
   const httpServer = createServer(app);
