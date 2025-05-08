@@ -92,6 +92,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
           userId: userId,
           details: { assignedToId: task.assignedToId, taskTitle: task.title }
         });
+        
+        // Send email notification if the assigned user has that preference
+        try {
+          const assignedUser = await storage.getUser(task.assignedToId);
+          if (assignedUser) {
+            sendTaskAssignmentNotification(assignedUser, task, creator)
+              .catch(err => console.error('Error sending task assignment email:', err));
+          }
+        } catch (error) {
+          console.error('Error sending task assignment email notification:', error);
+        }
       }
       
       // If it's a recurring task, create future instances
@@ -176,6 +187,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (app.locals.sendNotification) {
           app.locals.sendNotification(taskData.assignedToId, notification);
         }
+        
+        // Send email notification to the newly assigned user
+        try {
+          const assignedUser = await storage.getUser(taskData.assignedToId);
+          if (assignedUser) {
+            sendTaskAssignmentNotification(assignedUser, updatedTask, creator)
+              .catch(err => console.error('Error sending task assignment email:', err));
+          }
+        } catch (error) {
+          console.error('Error sending task assignment email notification:', error);
+        }
       }
       
       // Send notification when task status is changed
@@ -197,6 +219,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Send WebSocket notification if available
         if (app.locals.sendNotification && task.assignedToId) {
           app.locals.sendNotification(task.assignedToId, notification);
+        }
+        
+        // Send email notification based on the user's preferences
+        try {
+          const assignedUser = await storage.getUser(task.assignedToId);
+          if (assignedUser) {
+            if (taskData.status === 'completed') {
+              // Send completion notification
+              sendTaskCompletionNotification(assignedUser, updatedTask, updater)
+                .catch(err => console.error('Error sending task completion email:', err));
+            } else {
+              // Send status update notification
+              sendTaskStatusUpdateNotification(
+                assignedUser, 
+                updatedTask, 
+                updater, 
+                task.status, 
+                taskData.status
+              ).catch(err => console.error('Error sending task status update email:', err));
+            }
+          }
+        } catch (error) {
+          console.error('Error sending task status email notification:', error);
         }
       }
       

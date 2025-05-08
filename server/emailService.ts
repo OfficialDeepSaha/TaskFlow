@@ -66,6 +66,11 @@ export async function sendTaskAssignmentNotification(
     return false;
   }
 
+  const email = getSafeEmail(user.email);
+  if (!email) {
+    return false;
+  }
+
   const subject = `New Task Assigned: ${task.title}`;
   const text = `
     Hello ${user.name},
@@ -84,7 +89,7 @@ export async function sendTaskAssignmentNotification(
   `;
 
   return sendEmail({
-    to: user.email,
+    to: email,
     subject,
     text
   });
@@ -102,6 +107,11 @@ export async function sendTaskStatusUpdateNotification(
 ): Promise<boolean> {
   // Check if user has enabled email notifications for status updates
   if (!shouldSendEmailNotification(user, 'taskStatusUpdate')) {
+    return false;
+  }
+
+  const email = getSafeEmail(user.email);
+  if (!email) {
     return false;
   }
 
@@ -124,7 +134,7 @@ export async function sendTaskStatusUpdateNotification(
   `;
 
   return sendEmail({
-    to: user.email,
+    to: email,
     subject,
     text
   });
@@ -140,6 +150,11 @@ export async function sendTaskCompletionNotification(
 ): Promise<boolean> {
   // Check if user has enabled email notifications for task completion
   if (!shouldSendEmailNotification(user, 'taskCompletion')) {
+    return false;
+  }
+
+  const email = getSafeEmail(user.email);
+  if (!email) {
     return false;
   }
 
@@ -160,7 +175,7 @@ export async function sendTaskCompletionNotification(
   `;
 
   return sendEmail({
-    to: user.email,
+    to: email,
     subject,
     text
   });
@@ -175,6 +190,11 @@ export async function sendTaskDueSoonNotification(
 ): Promise<boolean> {
   // Check if user has enabled email notifications for due soon reminders
   if (!shouldSendEmailNotification(user, 'taskDueSoon')) {
+    return false;
+  }
+
+  const email = getSafeEmail(user.email);
+  if (!email) {
     return false;
   }
 
@@ -196,7 +216,7 @@ export async function sendTaskDueSoonNotification(
   `;
 
   return sendEmail({
-    to: user.email,
+    to: email,
     subject,
     text
   });
@@ -205,7 +225,10 @@ export async function sendTaskDueSoonNotification(
 /**
  * Helper function to check if user should receive email notifications for a specific event type
  */
-function shouldSendEmailNotification(user: User, eventType: keyof Pick<User['notificationPreferences'], 'taskAssignment' | 'taskStatusUpdate' | 'taskCompletion' | 'taskDueSoon' | 'systemUpdates'>): boolean {
+function shouldSendEmailNotification(
+  user: User, 
+  eventType: 'taskAssignment' | 'taskStatusUpdate' | 'taskCompletion' | 'taskDueSoon' | 'systemUpdates'
+): boolean {
   // Abort if user has no email
   if (!user.email || typeof user.email !== 'string') {
     return false;
