@@ -407,8 +407,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isAdmin = req.user!.role === 'admin';
       const isManager = req.user!.role === 'manager';
       
+      // Define task type based on what's returned from storage
+      type TaskType = Awaited<ReturnType<typeof storage.getAllTasks>>[number];
+      
       // Get tasks (all for admin/manager, only assigned/created for regular users)
-      let tasks;
+      let tasks: TaskType[];
       if (isAdmin || isManager) {
         tasks = await storage.getAllTasks();
       } else {
@@ -417,7 +420,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const assignedTasks = await storage.getTasksByAssignee(userId);
         
         // Combine and remove duplicates
-        const taskMap = new Map<number, Task>();
+        const taskMap = new Map<number, TaskType>();
         [...createdTasks, ...assignedTasks].forEach(task => {
           taskMap.set(task.id, task);
         });
@@ -537,8 +540,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const isAdmin = req.user!.role === 'admin';
       const isManager = req.user!.role === 'manager';
       
+      // Define task type based on what's returned from storage
+      type TaskType = Awaited<ReturnType<typeof storage.getAllTasks>>[number];
+      
       // Get tasks (all for admin/manager, only assigned/created for regular users)
-      let tasks;
+      let tasks: TaskType[];
       if (isAdmin || isManager) {
         tasks = await storage.getAllTasks();
       } else {
@@ -547,7 +553,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const assignedTasks = await storage.getTasksByAssignee(userId);
         
         // Combine and remove duplicates
-        const taskMap = new Map<number, Task>();
+        const taskMap = new Map<number, TaskType>();
         [...createdTasks, ...assignedTasks].forEach(task => {
           taskMap.set(task.id, task);
         });
