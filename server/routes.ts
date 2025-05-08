@@ -2,8 +2,11 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth } from "./auth";
-import { insertTaskSchema, updateTaskSchema } from "@shared/schema";
-import { TaskPriority, TaskStatus, UserRole, AuditEntity, AuditAction, Task, NotificationChannel } from "@shared/schema";
+import { insertTaskSchema, updateTaskSchema, insertTaskMoodReactionSchema } from "@shared/schema";
+import { 
+  TaskPriority, TaskStatus, UserRole, AuditEntity, AuditAction, Task, NotificationChannel,
+  TaskMoodType, TaskColor
+} from "@shared/schema";
 import { ZodError } from "zod";
 import { WebSocketServer, WebSocket } from "ws";
 import { 

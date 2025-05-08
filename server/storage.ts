@@ -1,10 +1,11 @@
 import { 
-  users, tasks, notifications, auditLogs, 
+  users, tasks, notifications, auditLogs, taskMoodReactions,
   type User, type InsertUser, 
   type Task, type InsertTask, type UpdateTask, 
   type Notification, type InsertNotification,
   type AuditLog, type InsertAuditLog,
-  AuditAction, AuditEntity, UserRole, RecurringPattern, TaskStatus, NotificationChannel
+  type TaskMoodReaction, type InsertTaskMoodReaction,
+  AuditAction, AuditEntity, UserRole, RecurringPattern, TaskStatus, NotificationChannel, TaskColor, TaskMoodType
 } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
@@ -359,6 +360,32 @@ export class MemStorage implements IStorage {
     
     // Sort by timestamp, most recent first
     return logs.sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
+  }
+  
+  // Task mood reactions operations
+  async createTaskMoodReaction(moodReaction: InsertTaskMoodReaction): Promise<TaskMoodReaction> {
+    const id = this.moodReactionCurrentId++;
+    const now = new Date();
+    const reaction: TaskMoodReaction = {
+      ...moodReaction,
+      id,
+      createdAt: now,
+    };
+    
+    this.taskMoodReactions.set(id, reaction);
+    return reaction;
+  }
+  
+  async getTaskMoodReactions(taskId: number): Promise<TaskMoodReaction[]> {
+    return Array.from(this.taskMoodReactions.values())
+      .filter(reaction => reaction.taskId === taskId)
+      .sort((a, b) => Number(b.createdAt) - Number(a.createdAt)); // Sort by newest first
+  }
+  
+  async getUserMoodReactions(userId: number): Promise<TaskMoodReaction[]> {
+    return Array.from(this.taskMoodReactions.values())
+      .filter(reaction => reaction.userId === userId)
+      .sort((a, b) => Number(b.createdAt) - Number(a.createdAt)); // Sort by newest first
   }
 
   // Recurring task operations
