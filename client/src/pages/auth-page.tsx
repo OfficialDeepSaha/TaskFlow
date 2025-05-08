@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +7,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { CheckSquareIcon } from "lucide-react";
+import { apiRequest, queryClient, getQueryFn } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import {
   Card,
   CardContent,
@@ -25,7 +27,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { insertUserSchema } from "@shared/schema";
+import { User, insertUserSchema } from "@shared/schema";
 
 // Extend the insert user schema with validation
 const loginSchema = z.object({
@@ -48,20 +50,60 @@ type RegisterData = z.infer<typeof registerSchema>;
 export default function AuthPage() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [location, navigate] = useLocation();
+  const { toast } = useToast();
   
-  let auth;
-  try {
-    auth = useAuth();
-  } catch (error) {
-    // Fallback for when AuthProvider is not available
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p>Authentication service is initializing...</p>
-      </div>
-    );
-  }
+  // Directly check if user is logged in
+  const { data: user, isLoading } = useQuery<User | undefined, Error>({
+    queryKey: ["/api/user"],
+    queryFn: getQueryFn({ on401: "returnNull" }),
+  });
   
-  const { user, loginMutation, registerMutation } = auth;
+  // Configure login mutation
+  const loginMutation = useMutation({
+    mutationFn: async (credentials: Pick<RegisterData, "username" | "password">) => {
+      const res = await apiRequest("POST", "/api/login", credentials);
+      return await res.json();
+    },
+    onSuccess: (user: User) => {
+      queryClient.setQueryData(["/api/user"], user);
+      toast({
+        title: "Login successful",
+        description: `Welcome back, ${user.name}!`,
+      });
+      navigate("/dashboard");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Login failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+  
+  // Configure registration mutation
+  const registerMutation = useMutation({
+    mutationFn: async (userData: RegisterData) => {
+      const { confirmPassword, ...registrationData } = userData;
+      const res = await apiRequest("POST", "/api/register", registrationData);
+      return await res.json();
+    },
+    onSuccess: (user: User) => {
+      queryClient.setQueryData(["/api/user"], user);
+      toast({
+        title: "Registration successful",
+        description: `Welcome to TaskFlow, ${user.name}!`,
+      });
+      navigate("/dashboard");
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Registration failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   // Redirect if already logged in
   useEffect(() => {
