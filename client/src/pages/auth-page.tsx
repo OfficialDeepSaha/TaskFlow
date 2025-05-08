@@ -38,8 +38,12 @@ const loginSchema = z.object({
 
 type LoginData = z.infer<typeof loginSchema>;
 
-const registerSchema = insertUserSchema.extend({
-  confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
+// Define registration schema with confirmation field
+const registerSchema = z.object({
+  name: z.string().min(1, "Full name is required"),
+  username: z.string().min(1, "Email is required").email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  confirmPassword: z.string().min(1, "Please confirm your password"),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords don't match",
   path: ["confirmPassword"],
@@ -84,6 +88,7 @@ export default function AuthPage() {
   // Configure registration mutation
   const registerMutation = useMutation({
     mutationFn: async (userData: RegisterData) => {
+      // Extract confirmPassword field before sending to API
       const { confirmPassword, ...registrationData } = userData;
       const res = await apiRequest("POST", "/api/register", registrationData);
       return await res.json();
@@ -141,8 +146,7 @@ export default function AuthPage() {
   };
 
   const onRegisterSubmit = (data: RegisterData) => {
-    const { confirmPassword, ...userData } = data;
-    registerMutation.mutate(userData);
+    registerMutation.mutate(data);
   };
 
   return (
