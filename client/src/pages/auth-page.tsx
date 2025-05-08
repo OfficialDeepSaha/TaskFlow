@@ -27,18 +27,16 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { User, insertUserSchema } from "@shared/schema";
+import { User } from "@shared/schema";
 
-// Extend the insert user schema with validation
+// Define schemas
 const loginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
+  username: z.string().min(1, "Email is required").email("Invalid email address"),
   password: z.string().min(1, "Password is required"),
-  rememberMe: z.boolean().optional(),
 });
 
 type LoginData = z.infer<typeof loginSchema>;
 
-// Define registration schema with confirmation field
 const registerSchema = z.object({
   name: z.string().min(1, "Full name is required"),
   username: z.string().min(1, "Email is required").email("Invalid email address"),
@@ -53,26 +51,46 @@ type RegisterData = z.infer<typeof registerSchema>;
 
 export default function AuthPage() {
   const [isRegistering, setIsRegistering] = useState(false);
-  const [location, navigate] = useLocation();
+  const [, navigate] = useLocation();
   const { toast } = useToast();
   
-  // Directly check if user is logged in
-  const { data: user, isLoading } = useQuery<User | undefined, Error>({
+  // Check if user is logged in
+  const { data: user } = useQuery<User | undefined, Error>({
     queryKey: ["/api/user"],
     queryFn: getQueryFn({ on401: "returnNull" }),
   });
   
-  // Configure login mutation
+  // Login form
+  const loginForm = useForm<LoginData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      username: "",
+      password: "",
+    },
+  });
+
+  // Register form
+  const registerForm = useForm<RegisterData>({
+    resolver: zodResolver(registerSchema),
+    defaultValues: {
+      name: "",
+      username: "",
+      password: "",
+      confirmPassword: "",
+    },
+  });
+
+  // Login mutation
   const loginMutation = useMutation({
-    mutationFn: async (credentials: Pick<RegisterData, "username" | "password">) => {
-      const res = await apiRequest("POST", "/api/login", credentials);
+    mutationFn: async (data: LoginData) => {
+      const res = await apiRequest("POST", "/api/login", data);
       return await res.json();
     },
-    onSuccess: (user: User) => {
-      queryClient.setQueryData(["/api/user"], user);
+    onSuccess: (userData: User) => {
+      queryClient.setQueryData(["/api/user"], userData);
       toast({
         title: "Login successful",
-        description: `Welcome back, ${user.name}!`,
+        description: `Welcome back, ${userData.name}!`,
       });
       navigate("/dashboard");
     },
@@ -84,20 +102,19 @@ export default function AuthPage() {
       });
     },
   });
-  
-  // Configure registration mutation
+
+  // Register mutation
   const registerMutation = useMutation({
-    mutationFn: async (userData: RegisterData) => {
-      // Extract confirmPassword field before sending to API
-      const { confirmPassword, ...registrationData } = userData;
+    mutationFn: async (data: RegisterData) => {
+      const { confirmPassword, ...registrationData } = data;
       const res = await apiRequest("POST", "/api/register", registrationData);
       return await res.json();
     },
-    onSuccess: (user: User) => {
-      queryClient.setQueryData(["/api/user"], user);
+    onSuccess: (userData: User) => {
+      queryClient.setQueryData(["/api/user"], userData);
       toast({
         title: "Registration successful",
-        description: `Welcome to TaskFlow, ${user.name}!`,
+        description: `Welcome to TaskFlow, ${userData.name}!`,
       });
       navigate("/dashboard");
     },
@@ -117,32 +134,9 @@ export default function AuthPage() {
     }
   }, [user, navigate]);
 
-  // Login form
-  const loginForm = useForm<LoginData>({
-    resolver: zodResolver(loginSchema),
-    defaultValues: {
-      username: "",
-      password: "",
-      rememberMe: false,
-    },
-  });
-
-  // Register form
-  const registerForm = useForm<RegisterData>({
-    resolver: zodResolver(registerSchema),
-    defaultValues: {
-      name: "",
-      username: "",
-      password: "",
-      confirmPassword: "",
-    },
-  });
-
+  // Handle form submissions
   const onLoginSubmit = (data: LoginData) => {
-    loginMutation.mutate({
-      username: data.username,
-      password: data.password,
-    });
+    loginMutation.mutate(data);
   };
 
   const onRegisterSubmit = (data: RegisterData) => {
@@ -168,96 +162,57 @@ export default function AuthPage() {
             <CardContent>
               {isRegistering ? (
                 <Form {...registerForm}>
-                  <form 
-                    onSubmit={registerForm.handleSubmit(onRegisterSubmit)} 
-                    className="space-y-4"
-                  >
-                    <FormField
-                      control={registerForm.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Full Name</FormLabel>
-                          <FormControl>
-                            <Input 
-                              placeholder="John Doe" 
-                              onChange={field.onChange} 
-                              onBlur={field.onBlur}
-                              value={field.value}
-                              name={field.name}
-                              ref={field.ref}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                  <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name">Full Name</Label>
+                      <Input
+                        id="name"
+                        placeholder="John Doe"
+                        {...registerForm.register("name")}
+                      />
+                      {registerForm.formState.errors.name && (
+                        <p className="text-sm text-red-500">{registerForm.formState.errors.name.message}</p>
                       )}
-                    />
+                    </div>
                     
-                    <FormField
-                      control={registerForm.control}
-                      name="username"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Email</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="email" 
-                              placeholder="john@example.com" 
-                              onChange={field.onChange} 
-                              onBlur={field.onBlur}
-                              value={field.value}
-                              name={field.name}
-                              ref={field.ref}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                    <div className="space-y-2">
+                      <Label htmlFor="registerEmail">Email</Label>
+                      <Input
+                        id="registerEmail"
+                        type="email"
+                        placeholder="john@example.com"
+                        {...registerForm.register("username")}
+                      />
+                      {registerForm.formState.errors.username && (
+                        <p className="text-sm text-red-500">{registerForm.formState.errors.username.message}</p>
                       )}
-                    />
+                    </div>
                     
-                    <FormField
-                      control={registerForm.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Password</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="password" 
-                              placeholder="••••••••" 
-                              onChange={field.onChange} 
-                              onBlur={field.onBlur}
-                              value={field.value}
-                              name={field.name}
-                              ref={field.ref}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                    <div className="space-y-2">
+                      <Label htmlFor="registerPassword">Password</Label>
+                      <Input
+                        id="registerPassword"
+                        type="password"
+                        placeholder="••••••••"
+                        {...registerForm.register("password")}
+                      />
+                      {registerForm.formState.errors.password && (
+                        <p className="text-sm text-red-500">{registerForm.formState.errors.password.message}</p>
                       )}
-                    />
+                    </div>
                     
-                    <FormField
-                      control={registerForm.control}
-                      name="confirmPassword"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Confirm Password</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="password" 
-                              placeholder="••••••••" 
-                              onChange={field.onChange} 
-                              onBlur={field.onBlur}
-                              value={field.value}
-                              name={field.name}
-                              ref={field.ref}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                    <div className="space-y-2">
+                      <Label htmlFor="confirmPassword">Confirm Password</Label>
+                      <Input
+                        id="confirmPassword"
+                        type="password"
+                        placeholder="••••••••"
+                        {...registerForm.register("confirmPassword")}
+                      />
+                      {registerForm.formState.errors.confirmPassword && (
+                        <p className="text-sm text-red-500">{registerForm.formState.errors.confirmPassword.message}</p>
                       )}
-                    />
+                    </div>
                     
                     <Button 
                       type="submit" 
@@ -270,53 +225,32 @@ export default function AuthPage() {
                 </Form>
               ) : (
                 <Form {...loginForm}>
-                  <form 
-                    onSubmit={loginForm.handleSubmit(onLoginSubmit)} 
-                    className="space-y-4"
-                  >
-                    <FormField
-                      control={loginForm.control}
-                      name="username"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Email</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="email" 
-                              placeholder="john@example.com" 
-                              onChange={field.onChange} 
-                              onBlur={field.onBlur}
-                              value={field.value}
-                              name={field.name}
-                              ref={field.ref}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                  <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="loginEmail">Email</Label>
+                      <Input
+                        id="loginEmail"
+                        type="email"
+                        placeholder="john@example.com"
+                        {...loginForm.register("username")}
+                      />
+                      {loginForm.formState.errors.username && (
+                        <p className="text-sm text-red-500">{loginForm.formState.errors.username.message}</p>
                       )}
-                    />
+                    </div>
                     
-                    <FormField
-                      control={loginForm.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Password</FormLabel>
-                          <FormControl>
-                            <Input 
-                              type="password" 
-                              placeholder="••••••••" 
-                              onChange={field.onChange} 
-                              onBlur={field.onBlur}
-                              value={field.value}
-                              name={field.name}
-                              ref={field.ref}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+                    <div className="space-y-2">
+                      <Label htmlFor="loginPassword">Password</Label>
+                      <Input
+                        id="loginPassword"
+                        type="password"
+                        placeholder="••••••••"
+                        {...loginForm.register("password")}
+                      />
+                      {loginForm.formState.errors.password && (
+                        <p className="text-sm text-red-500">{loginForm.formState.errors.password.message}</p>
                       )}
-                    />
+                    </div>
                     
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
