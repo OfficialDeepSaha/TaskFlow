@@ -161,6 +161,8 @@ export class MemStorage implements IStorage {
       recurringPattern: insertTask.recurringPattern || 'none',
       recurringEndDate: insertTask.recurringEndDate || null,
       parentTaskId: insertTask.parentTaskId || null,
+      // Color coding for visual prioritization
+      colorCode: insertTask.colorCode || 'default',
     };
     
     this.tasks.set(id, task);

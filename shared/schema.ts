@@ -91,6 +91,28 @@ export enum RecurringPattern {
   MONTHLY = "monthly",
 }
 
+// Emoji reaction types for task mood tracking
+export enum TaskMoodType {
+  HAPPY = "happy",
+  EXCITED = "excited",
+  NEUTRAL = "neutral",
+  WORRIED = "worried",
+  STRESSED = "stressed",
+  CONFUSED = "confused",
+}
+
+// Available colors for task color coding
+export enum TaskColor {
+  DEFAULT = "default",
+  RED = "red",
+  ORANGE = "orange",
+  YELLOW = "yellow",
+  GREEN = "green",
+  BLUE = "blue",
+  PURPLE = "purple",
+  PINK = "pink",
+}
+
 export const tasks = pgTable("tasks", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
@@ -106,6 +128,8 @@ export const tasks = pgTable("tasks", {
   recurringPattern: text("recurring_pattern").default(RecurringPattern.NONE),
   recurringEndDate: timestamp("recurring_end_date"),
   parentTaskId: integer("parent_task_id"),
+  // Color coding for visual prioritization
+  colorCode: text("color_code").default(TaskColor.DEFAULT),
 });
 
 export const insertTaskSchema = createInsertSchema(tasks)
@@ -115,6 +139,7 @@ export const insertTaskSchema = createInsertSchema(tasks)
     recurringEndDate: z.coerce.date().optional(),
     recurringPattern: z.nativeEnum(RecurringPattern).optional().default(RecurringPattern.NONE),
     isRecurring: z.boolean().optional().default(false),
+    colorCode: z.nativeEnum(TaskColor).optional().default(TaskColor.DEFAULT),
   });
 
 export const updateTaskSchema = createInsertSchema(tasks)
@@ -170,6 +195,21 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
   createdAt: true,
 });
 
+// Task mood reactions for collaborative mood tracking
+export const taskMoodReactions = pgTable("task_mood_reactions", {
+  id: serial("id").primaryKey(),
+  taskId: integer("task_id").notNull().references(() => tasks.id),
+  userId: integer("user_id").notNull().references(() => users.id),
+  mood: text("mood").notNull(), // The mood emoji/reaction name
+  comment: text("comment"), // Optional comment explaining the mood
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertTaskMoodReactionSchema = createInsertSchema(taskMoodReactions).omit({
+  id: true,
+  createdAt: true,
+});
+
 // Define the table types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -180,3 +220,5 @@ export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
+export type TaskMoodReaction = typeof taskMoodReactions.$inferSelect;
+export type InsertTaskMoodReaction = z.infer<typeof insertTaskMoodReactionSchema>;
