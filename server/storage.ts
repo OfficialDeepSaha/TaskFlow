@@ -4,7 +4,7 @@ import {
   type Task, type InsertTask, type UpdateTask, 
   type Notification, type InsertNotification,
   type AuditLog, type InsertAuditLog,
-  AuditAction, AuditEntity, UserRole, RecurringPattern
+  AuditAction, AuditEntity, UserRole, RecurringPattern, TaskStatus
 } from "@shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
