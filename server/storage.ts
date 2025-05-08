@@ -370,6 +370,7 @@ export class MemStorage implements IStorage {
       ...moodReaction,
       id,
       createdAt: now,
+      comment: moodReaction.comment || null,
     };
     
     this.taskMoodReactions.set(id, reaction);
@@ -664,6 +665,29 @@ export class DatabaseStorage implements IStorage {
     
     // Sort by timestamp, most recent first
     return await query.orderBy(desc(auditLogs.timestamp));
+  }
+  
+  // Task mood reactions operations
+  async createTaskMoodReaction(moodReaction: InsertTaskMoodReaction): Promise<TaskMoodReaction> {
+    const result = await this.db.insert(taskMoodReactions).values({
+      ...moodReaction,
+      createdAt: new Date(),
+      comment: moodReaction.comment || null
+    }).returning();
+    
+    return result[0];
+  }
+  
+  async getTaskMoodReactions(taskId: number): Promise<TaskMoodReaction[]> {
+    return await this.db.select().from(taskMoodReactions)
+      .where(eq(taskMoodReactions.taskId, taskId))
+      .orderBy(desc(taskMoodReactions.createdAt));
+  }
+  
+  async getUserMoodReactions(userId: number): Promise<TaskMoodReaction[]> {
+    return await this.db.select().from(taskMoodReactions)
+      .where(eq(taskMoodReactions.userId, userId))
+      .orderBy(desc(taskMoodReactions.createdAt));
   }
 
   // Recurring task operations

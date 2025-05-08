@@ -919,5 +919,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   };
   
+  // Task mood reactions endpoints
+  // Add a mood reaction to a task
+  app.post("/api/tasks/:id/mood-reactions", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    
+    try {
+      const taskId = parseInt(req.params.id);
+      const task = await storage.getTask(taskId);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      const userId = req.user!.id;
+      const moodData = insertTaskMoodReactionSchema.parse({
+        ...req.body,
+        taskId,
+        userId
+      });
+      
+      const moodReaction = await storage.createTaskMoodReaction(moodData);
+      
+      // Create audit log for mood reaction
+      await storage.createAuditLog({
+        entityId: task.id,
+        entityType: AuditEntity.TASK,
+        action: AuditAction.UPDATED,
+        userId,
+        details: { 
+          type: "mood_reaction",
+          mood: moodReaction.mood,
+          taskTitle: task.title
+        }
+      });
+      
+      // Send notification to task owner if different from current user
+      if (task.createdById !== userId) {
+        const reactor = req.user!;
+        
+        const notification = await storage.createNotification({
+          message: `${reactor.name} reacted with ${moodReaction.mood} to your task: ${task.title}`,
+          userId: task.createdById,
+          taskId: task.id,
+          read: false
+        });
+        
+        // Send WebSocket notification if available
+        if (app.locals.sendNotification) {
+          app.locals.sendNotification(task.createdById, notification);
+        }
+      }
+      
+      res.status(201).json(moodReaction);
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ 
+          message: "Invalid mood reaction data", 
+          errors: error.errors 
+        });
+      }
+      res.status(500).json({ message: "Error adding mood reaction" });
+    }
+  });
+  
+  // Get all mood reactions for a task
+  app.get("/api/tasks/:id/mood-reactions", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+    
+    try {
+      const taskId = parseInt(req.params.id);
+      const task = await storage.getTask(taskId);
+      
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      const reactions = await storage.getTaskMoodReactions(taskId);
+      
+      // Fetch user data for each reaction
+      const reactionsWithUsers = await Promise.all(
+        reactions.map(async (reaction) => {
+          const user = await storage.getUser(reaction.userId);
+          return {
+            ...reaction,
+            user
+          };
+        })
+      );
+      
+      res.json(reactionsWithUsers);
+    } catch (error) {
+      res.status(500).json({ message: "Error fetching mood reactions" });
+    }
+  });
+  
   return httpServer;
 }
