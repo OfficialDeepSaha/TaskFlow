@@ -18,13 +18,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { TaskPriority, TaskStatus, InsertTask, Task, UpdateTask } from "@shared/schema";
+import { TaskPriority, TaskStatus, TaskColor, InsertTask, Task, UpdateTask } from "@shared/schema";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { insertTaskSchema } from "@shared/schema";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Form,
   FormControl,
@@ -49,6 +50,16 @@ export function TaskForm({ isOpen, onClose, editTask }: TaskFormProps) {
   const taskFormSchema = insertTaskSchema
     .extend({
       dueDate: z.string().optional().transform(val => val ? new Date(val) : undefined),
+      colorCode: z.enum([
+        TaskColor.DEFAULT, 
+        TaskColor.RED, 
+        TaskColor.ORANGE, 
+        TaskColor.YELLOW, 
+        TaskColor.GREEN, 
+        TaskColor.BLUE, 
+        TaskColor.PURPLE, 
+        TaskColor.PINK
+      ]).default(TaskColor.DEFAULT),
     })
     .omit({ createdById: true });
 
@@ -60,6 +71,7 @@ export function TaskForm({ isOpen, onClose, editTask }: TaskFormProps) {
       description: editTask?.description || "",
       status: editTask?.status || TaskStatus.NOT_STARTED,
       priority: editTask?.priority || TaskPriority.MEDIUM,
+      colorCode: editTask?.colorCode || TaskColor.DEFAULT,
       assignedToId: editTask?.assignedToId,
       dueDate: editTask?.dueDate ? new Date(editTask.dueDate).toISOString().split('T')[0] : undefined,
     },

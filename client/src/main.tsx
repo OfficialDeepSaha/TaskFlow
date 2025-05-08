@@ -14,6 +14,7 @@ if (loadingElement) {
   loadingElement.remove();
 }
 
+// Make sure QueryClientProvider is the outermost provider
 root.render(
   <QueryClientProvider client={queryClient}>
     <ThemeProvider defaultTheme="light" storageKey="taskflow-theme">
