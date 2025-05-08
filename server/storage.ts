@@ -82,7 +82,13 @@ export class MemStorage implements IStorage {
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = this.userCurrentId++;
-    const user: User = { ...insertUser, id };
+    const user: User = { 
+      ...insertUser, 
+      id,
+      role: insertUser.role || 'user',
+      lastActive: new Date(),
+      avatar: null
+    };
     this.users.set(id, user);
     return user;
   }
@@ -108,6 +114,11 @@ export class MemStorage implements IStorage {
       description: insertTask.description || null,
       dueDate: insertTask.dueDate || null,
       assignedToId: insertTask.assignedToId || null,
+      // New fields for recurring tasks
+      isRecurring: insertTask.isRecurring || false,
+      recurringPattern: insertTask.recurringPattern || 'none',
+      recurringEndDate: insertTask.recurringEndDate || null,
+      parentTaskId: insertTask.parentTaskId || null,
     };
     
     this.tasks.set(id, task);

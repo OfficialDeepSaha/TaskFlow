@@ -1,18 +1,34 @@
-import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, json, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// User role options
+export enum UserRole {
+  ADMIN = "admin",
+  MANAGER = "manager",
+  USER = "user",
+}
+
+// Create the enum in the database
+export const roleEnum = pgEnum('user_role', ['admin', 'manager', 'user']);
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   username: text("username").notNull().unique(),
   name: text("name").notNull(),
   password: text("password").notNull(),
+  role: text("role").notNull().default(UserRole.USER),
+  lastActive: timestamp("last_active"),
+  avatar: text("avatar"),
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   name: true,
   password: true,
+  role: true,
+}).extend({
+  role: z.nativeEnum(UserRole).optional().default(UserRole.USER),
 });
 
 // Task priority options
@@ -29,6 +45,14 @@ export enum TaskStatus {
   COMPLETED = "completed"
 }
 
+// Recurring patterns for tasks
+export enum RecurringPattern {
+  NONE = "none",
+  DAILY = "daily", 
+  WEEKLY = "weekly",
+  MONTHLY = "monthly",
+}
+
 export const tasks = pgTable("tasks", {
   id: serial("id").primaryKey(),
   title: text("title").notNull(),
@@ -39,20 +63,60 @@ export const tasks = pgTable("tasks", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   createdById: integer("created_by_id").notNull().references(() => users.id),
   assignedToId: integer("assigned_to_id").references(() => users.id),
+  // Recurring task properties
+  isRecurring: boolean("is_recurring").default(false).notNull(),
+  recurringPattern: text("recurring_pattern").default(RecurringPattern.NONE),
+  recurringEndDate: timestamp("recurring_end_date"),
+  parentTaskId: integer("parent_task_id"),
 });
 
 export const insertTaskSchema = createInsertSchema(tasks)
   .omit({ id: true, createdAt: true })
   .extend({
     dueDate: z.coerce.date().optional(),
+    recurringEndDate: z.coerce.date().optional(),
+    recurringPattern: z.nativeEnum(RecurringPattern).optional().default(RecurringPattern.NONE),
+    isRecurring: z.boolean().optional().default(false),
   });
 
 export const updateTaskSchema = createInsertSchema(tasks)
   .omit({ id: true, createdAt: true, createdById: true })
   .extend({
     dueDate: z.coerce.date().optional(),
+    recurringEndDate: z.coerce.date().optional(),
   })
   .partial();
+
+// Action types for audit logs
+export enum AuditAction {
+  CREATED = "created",
+  UPDATED = "updated",
+  DELETED = "deleted",
+  ASSIGNED = "assigned",
+  COMPLETED = "completed",
+  STATUS_CHANGED = "status_changed",
+}
+
+// Entity types that can be audited
+export enum AuditEntity {
+  TASK = "task",
+  USER = "user",
+  NOTIFICATION = "notification",
+}
+
+// Audit logs table for tracking all actions
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  entityId: integer("entity_id").notNull(), // ID of the entity being modified
+  entityType: text("entity_type").notNull(), // Type of entity (task, user, etc)
+  action: text("action").notNull(), // Action performed (create, update, delete)
+  userId: integer("user_id").notNull().references(() => users.id), // User who performed the action
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  details: json("details"), // Additional details about the change
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs)
+  .omit({ id: true, timestamp: true });
 
 export const notifications = pgTable("notifications", {
   id: serial("id").primaryKey(),
@@ -68,6 +132,7 @@ export const insertNotificationSchema = createInsertSchema(notifications).omit({
   createdAt: true,
 });
 
+// Define the table types
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type Task = typeof tasks.$inferSelect;
@@ -75,3 +140,5 @@ export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type UpdateTask = z.infer<typeof updateTaskSchema>;
 export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
