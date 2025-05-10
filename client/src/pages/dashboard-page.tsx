@@ -63,12 +63,23 @@ import {
   Users,
   Filter,
   X,
-  Trash2
+  Trash2,
+  Gauge,
+  PieChart,
+  LineChart,
+  BarChart3,
+  LayoutDashboard,
+  UserCheck,
+  Activity,
+  FileBarChart,
+  Bell,
+  Shield
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { apiRequest, normalizeApiUrl } from "@/lib/queryClient";
 import { Task, TaskStatus } from "../../../shared/schema";
+import { UserRole } from "../../../shared/schema";
 import { 
   Popover,
   PopoverContent,
@@ -86,7 +97,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import AssignedTasksPage from "./assigned-tasks-page";
-import { UserRole } from "../../../shared/schema";
+import { StatsCard } from "@/components/stats-card";
+import { ActivityTimeline } from "@/components/activity-timeline";
+import { TaskPriorityBadge } from "@/components/task-badge";
 
 // Add a utility function at the top of the file
 function isValidImage(image: any): boolean {
@@ -96,15 +109,24 @@ function isValidImage(image: any): boolean {
 export default function DashboardPage() {
   const { toast } = useToast();
   const { user, refetchUser, logoutMutation } = useAuth();
+  const [location, navigate] = useLocation();
+  
   // If user is not loaded yet, show loading
-  if (!user) return <div className="text-center p-8">Loading...</div>;
-  // Role-based UI: regular users see assigned tasks page
-  if (user.role === UserRole.USER) {
-    return <AssignedTasksPage />;
-  }
+  if (!user) return (
+    <div className="flex items-center justify-center h-[calc(100vh-16rem)]">
+      <div className="relative">
+        <div className="w-12 h-12 rounded-full border-4 border-primary/30 border-t-primary animate-spin"></div>
+        <div className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center">
+          <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
+        </div>
+      </div>
+    </div>
+  );
+  
+  // Initialize state variables for both admin and user dashboards
   const [isLoadingTasks, setIsLoadingTasks] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [activeTab, setActiveTab] = useState('all');
+  const [activeTab, setActiveTab] = useState('overview');
   const [isAlertOpen, setIsAlertOpen] = useState(false);
   const [isNewTaskDialogOpen, setIsNewTaskDialogOpen] = useState(false);
   const [isTaskDetailOpen, setIsTaskDetailOpen] = useState(false);
@@ -129,7 +151,154 @@ export default function DashboardPage() {
     assignedToId: null as number | null
   });
   
-  // Task stats
+  // Role-based UI: regular users see assigned tasks page without duplicate layout
+  if (user.role === UserRole.USER) {
+    // Create a wrapper that includes the needed layout components but just changes the content
+    // This avoids duplicating the navbar and sidebar while still showing the user dashboard
+    return (
+      <div className="space-y-8">
+        {/* User Dashboard Header */}
+        <div className="flex flex-col space-y-6">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
+          >
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+                Tasks Assigned to Me
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                Welcome back, {user.name}! Here are your assigned tasks.
+              </p>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="outline" 
+                className="flex items-center gap-2 border-dashed"
+                onClick={() => setIsNewTaskDialogOpen(true)}
+              >
+                <Plus className="h-4 w-4" />
+                <span>New Task</span>
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+
+        {/* User Dashboard Content */}
+        <div>
+          <AssignedTasksPage inDashboard={true} />
+        </div>
+
+        {/* New Task Dialog */}
+        <Dialog open={isNewTaskDialogOpen} onOpenChange={setIsNewTaskDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Create New Task</DialogTitle>
+              <DialogDescription>
+                Add a new task to your list.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={createTask}>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="title">Task Title</Label>
+                  <Input 
+                    id="title" 
+                    value={newTask.title}
+                    onChange={(e) => setNewTask({...newTask, title: e.target.value})}
+                    placeholder="Enter task title"
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea 
+                    id="description" 
+                    value={newTask.description}
+                    onChange={(e) => setNewTask({...newTask, description: e.target.value})}
+                    placeholder="Enter task description (optional)"
+                    className="h-20"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="priority">Priority</Label>
+                    <Select 
+                      value={newTask.priority}
+                      onValueChange={(value) => setNewTask({...newTask, priority: value})}
+                    >
+                      <SelectTrigger id="priority">
+                        <SelectValue placeholder="Select priority" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="low">Low</SelectItem>
+                        <SelectItem value="medium">Medium</SelectItem>
+                        <SelectItem value="high">High</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="status">Status</Label>
+                    <Select 
+                      value={newTask.status}
+                      onValueChange={(value) => setNewTask({...newTask, status: value as TaskStatus})}
+                    >
+                      <SelectTrigger id="status">
+                        <SelectValue placeholder="Select status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="not_started">Not Started</SelectItem>
+                        <SelectItem value="in_progress">In Progress</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="dueDate">Due Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start text-left font-normal"
+                        id="dueDate"
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {newTask.dueDate ? format(newTask.dueDate, "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={newTask.dueDate || undefined}
+                        onSelect={(date) => setNewTask({...newTask, dueDate: date || null})}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsNewTaskDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit">Create Task</Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+    );
+  }
+  
+  // Task stats (admin dashboard only)
   const stats = {
     total: tasks.length,
     completed: tasks.filter(t => t.status === 'completed').length,
@@ -143,7 +312,7 @@ export default function DashboardPage() {
     high: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
   };
   
-  const statusIcons = {
+  const statusIcons: Record<TaskStatus, React.ReactNode> = {
     not_started: <Clock className="h-4 w-4 text-slate-500" />,
     in_progress: <ListTodo className="h-4 w-4 text-blue-500" />,
     completed: <CheckCheck className="h-4 w-4 text-green-500" />
@@ -525,615 +694,848 @@ export default function DashboardPage() {
   });
 
   return (
-    <div className="h-full flex-1 flex-col space-y-8 p-8 pt-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
-      {/* Header with greeting, logout button and stats */}
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex flex-col space-y-0.5">
-          <motion.h2 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="text-3xl font-bold tracking-tight text-gray-900 dark:text-gray-50"
-          >
-            Welcome, {user?.name || "User"}!
-          </motion.h2>
-          <motion.p 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            className="text-muted-foreground"
-          >
-            Here's an overview of your tasks and progress.
-          </motion.p>
-        </div>
-        
-        {/* Notifications and Logout */}
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.4 }}
-          className="flex items-center gap-2"
-        >
-          <NotificationCenter />
-          <Button 
-            variant="outline" 
-            className="flex items-center gap-2 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors"
-            onClick={() => {
-              if (logoutMutation && logoutMutation.mutate) {
-                logoutMutation.mutate();
-                toast({
-                  title: "Logging out",
-                  description: "You are being logged out...",
-                });
-              }
-            }}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-              <polyline points="16 17 21 12 16 7" />
-              <line x1="21" y1="12" x2="9" y2="12" />
-            </svg>
-            Logout
-          </Button>
-        </motion.div>
-      </div>
-      
-      {/* Stats cards */}
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
-        className="grid gap-4 md:grid-cols-2 lg:grid-cols-4"
-      >
-        <Card className="shadow-sm hover:shadow-md transition-shadow duration-300">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
-            <ClipboardList className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">
-              {isLoadingTasks ? 'Loading...' : `${stats.completed} completed`}
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card className="shadow-sm hover:shadow-md transition-shadow duration-300">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Completed</CardTitle>
-            <CheckCircle2 className="h-4 w-4 text-green-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.completed}</div>
-            <p className="text-xs text-muted-foreground">
-              {isLoadingTasks ? 'Loading...' : stats.total > 0 
-                ? `${Math.round((stats.completed / stats.total) * 100)}% completion rate` 
-                : 'No tasks yet'
-              }
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card className="shadow-sm hover:shadow-md transition-shadow duration-300">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-            <Clock className="h-4 w-4 text-blue-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.inProgress}</div>
-            <p className="text-xs text-muted-foreground">
-              {isLoadingTasks ? 'Loading...' : stats.total > 0 
-                ? `${Math.round((stats.inProgress / stats.total) * 100)}% of your tasks` 
-                : 'No tasks yet'
-              }
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card className="shadow-sm hover:shadow-md transition-shadow duration-300">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Not Started</CardTitle>
-            <AlertCircle className="h-4 w-4 text-yellow-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.notStarted}</div>
-            <p className="text-xs text-muted-foreground">
-              {isLoadingTasks ? 'Loading...' : stats.total > 0 
-                ? `${Math.round((stats.notStarted / stats.total) * 100)}% of your tasks` 
-                : 'No tasks yet'
-              }
-            </p>
-          </CardContent>
-        </Card>
-      </motion.div>
-      
-      <Separator />
-      
-      {/* Admin Section - Only shown for users with admin role */}
-      {user?.role === "admin" && (
-        <motion.div
+    <div className="space-y-8">
+      {/* Admin Dashboard Header */}
+      <div className="flex flex-col space-y-6">
+        <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
+          transition={{ duration: 0.5 }}
+          className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
         >
-          <Tabs defaultValue="admin-tools" className="mb-8">
-            <TabsList className="mb-4">
-              <TabsTrigger value="admin-tools">Admin Tools</TabsTrigger>
-              <TabsTrigger value="analytics">Analytics Dashboard</TabsTrigger>
-            </TabsList>
-            <TabsContent value="admin-tools">
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2 mb-8">
-                <RecurringTasksPanel />
-                <AuditLogsPanel />
-              </div>
-            </TabsContent>
-            <TabsContent value="analytics">
-              <AnalyticsDashboard />
-            </TabsContent>
-          </Tabs>
-          <Separator className="my-4" />
-        </motion.div>
-      )}
-      
-      {/* User Preferences Section - Shown for all users */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
-        className="mb-8"
-      >
-        <Tabs defaultValue="notifications" className="mb-8">
-          <TabsList className="mb-4">
-            <TabsTrigger value="notifications">Notification Preferences</TabsTrigger>
-          </TabsList>
-          <TabsContent value="notifications">
-            <NotificationPreferences />
-          </TabsContent>
-        </Tabs>
-        <Separator className="my-4" />
-      </motion.div>
-      
-      {/* Tasks section with tabs */}
-      <motion.div 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.4 }}
-        className="space-y-4"
-      >
-        <div className="flex justify-between items-center">
-          <h3 className="text-lg font-medium">Your Tasks</h3>
-          <Dialog open={isNewTaskDialogOpen} onOpenChange={setIsNewTaskDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="transition-all duration-300 hover:scale-105">
-                <Plus className="mr-2 h-4 w-4" />
-                New Task
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+              Admin Dashboard
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              Welcome back, {user.name}! Here's what's happening with your team today.
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              className="flex items-center gap-2 border-dashed"
+              onClick={() => setIsNewTaskDialogOpen(true)}
+            >
+              <Plus className="h-4 w-4" />
+              <span>New Task</span>
+            </Button>
+            
+            <Link href="/admin/reports">
+              <Button variant="outline" className="flex items-center gap-2">
+                <FileBarChart className="h-4 w-4" />
+                <span className="hidden sm:inline-block">Reports</span>
               </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
-              <DialogHeader>
-                <DialogTitle>Create New Task</DialogTitle>
-                <DialogDescription>
-                  Add a new task to your list. Click save when you're done.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={createTask}>
-                <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="title">Task Title</Label>
-                    <Input 
-                      id="title" 
-                      placeholder="Enter task title" 
-                      value={newTask.title}
-                      onChange={(e) => setNewTask({...newTask, title: e.target.value})}
-                      required
-                    />
+            </Link>
+            
+            <Button 
+              variant={isLoadingTasks ? "secondary" : "default"} 
+              className="flex items-center gap-2"
+              onClick={() => {
+                loadTasks();
+                loadUsers();
+              }}
+              disabled={isLoadingTasks}
+            >
+              {isLoadingTasks ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Loading...</span>
+                </>
+              ) : (
+                <>
+                  <Activity className="h-4 w-4" />
+                  <span className="hidden sm:inline-block">Refresh</span>
+                </>
+              )}
+            </Button>
+          </div>
+        </motion.div>
+
+        {/* Dashboard Navigation Tabs */}
+        <Tabs 
+          value={activeTab} 
+          onValueChange={setActiveTab}
+          className="w-full"
+        >
+          <TabsList className="grid grid-cols-2 md:grid-cols-4 lg:w-[600px]">
+            <TabsTrigger 
+              value="overview" 
+              className="flex items-center gap-2"
+              onClick={() => navigate("/admin")}
+            >
+              <LayoutDashboard className="h-4 w-4" />
+              <span>Overview</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="analytics" 
+              className="flex items-center gap-2"
+              onClick={() => navigate("/admin/analytics")}
+            >
+              <BarChart3 className="h-4 w-4" />
+              <span>Analytics</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="team" 
+              className="flex items-center gap-2"
+              onClick={() => navigate("/admin/team")}
+            >
+              <Users className="h-4 w-4" />
+              <span>Team</span>
+            </TabsTrigger>
+            <TabsTrigger 
+              value="settings" 
+              className="flex items-center gap-2"
+              onClick={() => navigate("/admin/settings")}
+            >
+              <Gauge className="h-4 w-4" />
+              <span>Settings</span>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+
+      {/* Dashboard Overview Stats */}
+      <AnimatePresence>
+        {activeTab === 'overview' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.5 }}
+            className="grid gap-6 md:grid-cols-2 lg:grid-cols-4"
+          >
+            {/* Total Tasks */}
+            <Card className="hover:shadow-md transition-all duration-300 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-950/20 dark:to-transparent border-blue-100 dark:border-blue-900/30 overflow-hidden group">
+              <CardHeader className="pb-2">
+                <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-blue-100/80 dark:bg-blue-900/20 blur-2xl group-hover:blur-3xl transition-all duration-500"></div>
+                <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-3xl font-bold">{stats.total}</div>
+                    <p className="text-xs text-muted-foreground mt-1 flex items-center">
+                      <span className="text-blue-600 dark:text-blue-400 font-medium flex items-center mr-2">
+                        <Activity className="h-3 w-3 mr-1" /> +{stats.total > 0 ? Math.round((stats.inProgress / stats.total) * 100) : 0}%
+                      </span>
+                      since last week
+                    </p>
                   </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="description">Description</Label>
-                    <Textarea 
-                      id="description" 
-                      placeholder="Describe your task..."
-                      value={newTask.description}
-                      onChange={(e) => setNewTask({...newTask, description: e.target.value})}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="priority">Priority</Label>
-                      <Select 
-                        value={newTask.priority}
-                        onValueChange={(value) => setNewTask({...newTask, priority: value})}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select priority" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="low">Low</SelectItem>
-                          <SelectItem value="medium">Medium</SelectItem>
-                          <SelectItem value="high">High</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="status">Status</Label>
-                      <Select 
-                        value={newTask.status}
-                        onValueChange={(value: TaskStatus) => setNewTask({...newTask, status: value})}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="not_started">Not Started</SelectItem>
-                          <SelectItem value="in_progress">In Progress</SelectItem>
-                          <SelectItem value="completed">Completed</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="grid gap-2">
-                      <Label>Due Date</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className="w-full justify-start text-left font-normal"
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {newTask.dueDate ? format(newTask.dueDate, "PPP") : <span>Pick a date</span>}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <Calendar
-                            mode="single"
-                            selected={newTask.dueDate || undefined}
-                            onSelect={(date) => setNewTask({...newTask, dueDate: date as Date})}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Assign To</Label>
-                      <Select 
-                        value={newTask.assignedToId?.toString() || "current-user"}
-                        onValueChange={(value) => setNewTask({...newTask, assignedToId: value === "current-user" ? null : parseInt(value)})}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select user" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {/* Current user option */}
-                          <SelectItem value="current-user">Me ({user?.name})</SelectItem>
-                          
-                          {/* Show all users section - ensure we're showing multiple users */}
-                          {users.filter(u => u.id !== user?.id).length > 0 && (
-                            <>
-                              <DropdownMenuSeparator className="my-1" />
-                              <DropdownMenuLabel className="text-xs text-muted-foreground">All Team Members</DropdownMenuLabel>
-                              
-                              {/* Map through all users except current */}
-                              {users
-                                .filter(u => u.id !== user?.id) // Filter out current user to avoid duplication
-                                .map(u => (
-                                  <SelectItem key={u.id} value={u.id.toString()}>
-                                    {u.name}
-                                  </SelectItem>
-                                ))
-                              }
-                            </>
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                    <ClipboardList className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                   </div>
                 </div>
-                <DialogFooter>
-                  <Button variant="outline" type="button" onClick={() => setIsNewTaskDialogOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit">
-                    Create Task
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-        
-        {/* Add search and filter UI here */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search tasks by title or description..." 
-              className="pl-8"
-              value={searchQuery}
-              onChange={handleSearchChange}
-            />
-          </div>
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setShowFilters(!showFilters)}
-            className={`${showFilters ? "bg-primary/10" : ""} h-10 px-3`}
+              </CardContent>
+            </Card>
+
+            {/* Tasks Completed */}
+            <Card className="hover:shadow-md transition-all duration-300 bg-gradient-to-br from-green-50/50 to-transparent dark:from-green-950/20 dark:to-transparent border-green-100 dark:border-green-900/30 overflow-hidden group">
+              <CardHeader className="pb-2">
+                <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-green-100/80 dark:bg-green-900/20 blur-2xl group-hover:blur-3xl transition-all duration-500"></div>
+                <CardTitle className="text-sm font-medium">Completed Tasks</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-3xl font-bold">{stats.completed}</div>
+                    <p className="text-xs text-muted-foreground mt-1 flex items-center">
+                      <span className="text-green-600 dark:text-green-400 font-medium flex items-center mr-2">
+                        <Activity className="h-3 w-3 mr-1" /> +{stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%
+                      </span>
+                      completion rate
+                    </p>
+                  </div>
+                  <div className="h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                    <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* In Progress Tasks */}
+            <Card className="hover:shadow-md transition-all duration-300 bg-gradient-to-br from-amber-50/50 to-transparent dark:from-amber-950/20 dark:to-transparent border-amber-100 dark:border-amber-900/30 overflow-hidden group">
+              <CardHeader className="pb-2">
+                <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-amber-100/80 dark:bg-amber-900/20 blur-2xl group-hover:blur-3xl transition-all duration-500"></div>
+                <CardTitle className="text-sm font-medium">In Progress</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-3xl font-bold">{stats.inProgress}</div>
+                    <p className="text-xs text-muted-foreground mt-1 flex items-center">
+                      <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center mr-2">
+                        <Clock className="h-3 w-3 mr-1" /> {stats.inProgress} tasks
+                      </span>
+                      awaiting completion
+                    </p>
+                  </div>
+                  <div className="h-12 w-12 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                    <ListTodo className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Team Members */}
+            <Card className="hover:shadow-md transition-all duration-300 bg-gradient-to-br from-purple-50/50 to-transparent dark:from-purple-950/20 dark:to-transparent border-purple-100 dark:border-purple-900/30 overflow-hidden group">
+              <CardHeader className="pb-2">
+                <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-purple-100/80 dark:bg-purple-900/20 blur-2xl group-hover:blur-3xl transition-all duration-500"></div>
+                <CardTitle className="text-sm font-medium">Team Members</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-3xl font-bold">{users.length}</div>
+                    <p className="text-xs text-muted-foreground mt-1 flex items-center">
+                      <span className="text-purple-600 dark:text-purple-400 font-medium flex items-center mr-2">
+                        <UserCheck className="h-3 w-3 mr-1" /> {users.length} active
+                      </span>
+                      team members
+                    </p>
+                  </div>
+                  <div className="h-12 w-12 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
+                    <Users className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Admin Dashboard Overview Content */}
+      <AnimatePresence>
+        {activeTab === 'overview' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="grid gap-6 grid-cols-1 lg:grid-cols-3"
           >
-            <Filter className="h-4 w-4 mr-2" />
-            Filters
-            {(filters?.priority || filters?.dueDate || filters?.assignedTo) && (
-              <Badge variant="secondary" className="ml-2 px-1 py-0 h-5 min-w-[20px] flex items-center justify-center">
-                {[filters?.priority, filters?.dueDate, filters?.assignedTo].filter(Boolean).length}
-              </Badge>
-            )}
-          </Button>
-        </div>
-        
-        {/* Filter panel */}
-        {showFilters && (
-          <motion.div 
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="bg-background border rounded-lg p-4"
-          >
-            <div className="flex justify-between mb-2">
-              <h3 className="text-sm font-medium">Filters</h3>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => {
-                  setFilters({ priority: '', dueDate: '', assignedTo: '' });
-                }}
-                className="h-6 px-2 text-xs"
-              >
-                Clear all
-              </Button>
+            {/* Tasks Overview - Left Column (2/3 width) */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Search and Filter */}
+              <Card className="border-border/40">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg font-semibold">Tasks Overview</CardTitle>
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="h-9 px-3 flex items-center gap-1"
+                        onClick={() => setShowFilters(!showFilters)}
+                      >
+                        <Filter className="h-4 w-4" />
+                        <span>Filter</span>
+                      </Button>
+                      <Button 
+                        variant="default" 
+                        size="sm" 
+                        className="h-9"
+                        onClick={() => setIsNewTaskDialogOpen(true)}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        <span>Add Task</span>
+                      </Button>
+                    </div>
+                  </div>
+                  
+                  <div className="relative mt-2">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search tasks..."
+                      className="pl-10 bg-background/50"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                  </div>
+                  
+                  {showFilters && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t animate-in slide-in-from-top duration-300">
+                      <div className="space-y-2">
+                        <Label htmlFor="priority-filter">Priority</Label>
+                        <Select 
+                          value={filters.priority} 
+                          onValueChange={(value) => setFilters({...filters, priority: value})}
+                        >
+                          <SelectTrigger id="priority-filter">
+                            <SelectValue placeholder="All Priorities" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">All Priorities</SelectItem>
+                            <SelectItem value="low">Low</SelectItem>
+                            <SelectItem value="medium">Medium</SelectItem>
+                            <SelectItem value="high">High</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="assigned-filter">Assigned To</Label>
+                        <Select 
+                          value={filters.assignedTo} 
+                          onValueChange={(value) => setFilters({...filters, assignedTo: value})}
+                        >
+                          <SelectTrigger id="assigned-filter">
+                            <SelectValue placeholder="All Members" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">All Members</SelectItem>
+                            {users.map(user => (
+                              <SelectItem key={user.id} value={user.id.toString()}>
+                                {user.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        <Label htmlFor="due-date-filter">Due Date</Label>
+                        <Select 
+                          value={filters.dueDate} 
+                          onValueChange={(value) => setFilters({...filters, dueDate: value})}
+                        >
+                          <SelectTrigger id="due-date-filter">
+                            <SelectValue placeholder="Any Time" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">Any Time</SelectItem>
+                            <SelectItem value="today">Today</SelectItem>
+                            <SelectItem value="this-week">This Week</SelectItem>
+                            <SelectItem value="next-week">Next Week</SelectItem>
+                            <SelectItem value="overdue">Overdue</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  )}
+                </CardHeader>
+                
+                <CardContent className="p-0">
+                  {isLoadingTasks ? (
+                    <div className="flex items-center justify-center h-48">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>
+                        <div className="text-sm text-muted-foreground">Loading tasks...</div>
+                      </div>
+                    </div>
+                  ) : tasks.length > 0 ? (
+                    <div className="divide-y divide-border/40">
+                      {tasks.slice(0, 5).map(task => (
+                        <div 
+                          key={task.id} 
+                          className="p-4 flex items-center justify-between hover:bg-accent/5 transition-colors duration-200 group cursor-pointer"
+                          onClick={() => {
+                            setSelectedTask(task);
+                            setIsTaskDetailOpen(true);
+                          }}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 h-5 w-5 rounded-full flex items-center justify-center
+                              ${task.status === 'completed' ? 'bg-green-100 dark:bg-green-900/50' : 
+                                task.status === 'in_progress' ? 'bg-blue-100 dark:bg-blue-900/50' : 
+                                'bg-slate-100 dark:bg-slate-800'}`}
+                            >
+                              {statusIcons[task.status as TaskStatus]}
+                            </div>
+                            <div>
+                              <div className="font-medium text-sm group-hover:text-primary transition-colors">
+                                {task.title}
+                              </div>
+                              <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-2">
+                                <TaskPriorityBadge priority={task.priority} />
+                                {task.dueDate && (
+                                  <span className="flex items-center text-xs text-muted-foreground">
+                                    <CalendarIcon className="h-3 w-3 mr-1" />
+                                    Due {format(new Date(task.dueDate), "MMM dd")}
+                                  </span>
+                                )}
+                                {task.assignedToId && (
+                                  <span className="flex items-center text-xs text-muted-foreground">
+                                    <User className="h-3 w-3 mr-1" />
+                                    {getUserName(task.assignedToId)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="h-8 w-8 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedTask(task);
+                                setIsAlertOpen(true);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              className="h-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newStatus = 
+                                  task.status === 'not_started' ? ('in_progress' as TaskStatus) :
+                                  task.status === 'in_progress' ? ('completed' as TaskStatus) : ('not_started' as TaskStatus);
+                                updateTaskStatus(task.id, newStatus);
+                              }}
+                            >
+                              {task.status === 'completed' ? 'Reopen' :
+                               task.status === 'in_progress' ? 'Complete' : 'Start'}
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center h-48 flex-col">
+                      <ClipboardList className="h-10 w-10 text-muted-foreground mb-2" />
+                      <p className="text-muted-foreground">No tasks found</p>
+                      <Button 
+                        variant="link" 
+                        className="mt-2"
+                        onClick={() => setIsNewTaskDialogOpen(true)}
+                      >
+                        Create your first task
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+                
+                <CardFooter className="border-t flex items-center justify-between py-3 px-6">
+                  <div className="text-sm text-muted-foreground">
+                    Showing {Math.min(5, tasks.length)} of {tasks.length} tasks
+                  </div>
+                  <Button variant="outline" size="sm" asChild>
+                    <Link href="/tasks">View All Tasks</Link>
+                  </Button>
+                </CardFooter>
+              </Card>
+              
+              {/* Analytics Summary */}
+              <Card className="border-border/40">
+                <CardHeader>
+                  <CardTitle className="text-lg font-semibold">Task Completion Rate</CardTitle>
+                  <CardDescription>Weekly progress of task completion</CardDescription>
+                </CardHeader>
+                <CardContent className="pl-2">
+                  <div className="h-[200px] w-full">
+                    <AnalyticsDashboard />
+                  </div>
+                </CardContent>
+              </Card>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <Label className="text-xs">Priority</Label>
-                <Select 
-                  value={filters?.priority || 'any-priority'} 
-                  onValueChange={(value) => handleFilterChange('priority', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="any-priority">Any priority</SelectItem>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Due Date</Label>
-                <Select 
-                  value={filters?.dueDate || 'any-date'} 
-                  onValueChange={(value) => handleFilterChange('dueDate', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select due date" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="any-date">Any date</SelectItem>
-                    <SelectItem value="today">Today</SelectItem>
-                    <SelectItem value="this-week">This week</SelectItem>
-                    <SelectItem value="overdue">Overdue</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label className="text-xs">Assigned To</Label>
-                <Select 
-                  value={filters?.assignedTo || 'anyone'} 
-                  onValueChange={(value) => handleFilterChange('assignedTo', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select user" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="anyone">Anyone</SelectItem>
+            
+            {/* Activity Timeline - Right Column (1/3 width) */}
+            <div className="space-y-6">
+              <Card className="border-border/40">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-semibold">Recent Activity</CardTitle>
+                  <CardDescription>Latest updates from your team</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ActivityTimeline activities={[]} />
+                </CardContent>
+                <CardFooter className="border-t py-3">
+                  <Button variant="link" size="sm" className="mx-auto">
+                    View All Activity
+                  </Button>
+                </CardFooter>
+              </Card>
+              
+              <Card className="border-border/40">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-semibold">Team Members</CardTitle>
+                  <CardDescription>Active members in your workspace</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {users.slice(0, 5).map(user => (
+                      <div key={user.id} className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-9 w-9 rounded-full flex items-center justify-center bg-primary/10 text-primary font-medium text-sm`}>
+                            {user.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-medium text-sm">{user.name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {tasks.filter(t => t.assignedToId === user.id).length} assigned tasks
+                            </div>
+                          </div>
+                        </div>
+                        <Badge 
+                          variant="outline" 
+                          className="bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400"
+                        >
+                          Active
+                        </Badge>
+                      </div>
+                    ))}
                     
-                    {/* Always include current user option */}
-                    {user && (
-                      <SelectItem value={user.id.toString()}>Me ({user.name})</SelectItem>
+                    {users.length === 0 && (
+                      <div className="text-center py-6">
+                        <Users className="h-10 w-10 mx-auto mb-4" />
+                        <p className="text-muted-foreground">No team members found</p>
+                      </div>
                     )}
-                    
-                    {/* Show team members only if any exist */}
-                    {users.filter(u => u.id !== user?.id).length > 0 && (
-                      <>
-                        <DropdownMenuSeparator className="my-1" />
-                        <DropdownMenuLabel className="text-xs text-muted-foreground">Team Members</DropdownMenuLabel>
-                        
-                        {users.filter(u => u.id !== user?.id).map(u => (
-                          <SelectItem key={u.id} value={u.id.toString()}>
-                            {u.name}
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
+                  </div>
+                </CardContent>
+                <CardFooter className="border-t py-3">
+                  <Button variant="outline" size="sm" className="mx-auto" asChild>
+                    <Link href="/admin/team">Manage Team</Link>
+                  </Button>
+                </CardFooter>
+              </Card>
             </div>
           </motion.div>
         )}
-        
-        <Tabs defaultValue="all" className="w-full" onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-7">
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="not_started">Not Started</TabsTrigger>
-            <TabsTrigger value="in_progress">In Progress</TabsTrigger>
-            <TabsTrigger value="completed">Completed</TabsTrigger>
-            <TabsTrigger value="created">Created</TabsTrigger>
-            <TabsTrigger value="assigned">Assigned</TabsTrigger>
-            <TabsTrigger value="overdue">Overdue</TabsTrigger>
-          </TabsList>
-          <TabsContent value={activeTab} className="mt-4">
-            {isLoadingTasks ? (
-              <div className="flex justify-center items-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <span className="ml-2">Loading your tasks...</span>
+      </AnimatePresence>
+
+      {/* Admin Analytics Section */}
+      <AnimatePresence>
+        {activeTab === 'analytics' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.5 }}
+          >
+            <AnalyticsDashboard />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Admin Team Section */}
+      <AnimatePresence>
+        {activeTab === 'team' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.5 }}
+            className="space-y-6"
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold">Team Management</CardTitle>
+                <CardDescription>Manage your team members and their permissions</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="text-muted-foreground text-center py-10">
+                  <Users className="h-10 w-10 mx-auto mb-4" />
+                  <p>Team management interface will be implemented here.</p>
+                  <p className="text-sm">This section would typically contain team member management, permissions, etc.</p>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Admin Settings Section */}
+      <AnimatePresence>
+        {activeTab === 'settings' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.5 }}
+            className="space-y-6"
+          >
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold">System Settings</CardTitle>
+                <CardDescription>Configure system-wide settings and preferences</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Tabs defaultValue="general" className="w-full">
+                  <TabsList className="w-full grid grid-cols-3 mb-6">
+                    <TabsTrigger value="general">General</TabsTrigger>
+                    <TabsTrigger value="notifications">Notifications</TabsTrigger>
+                    <TabsTrigger value="security">Security</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="general">
+                    <NotificationPreferences />
+                  </TabsContent>
+                  <TabsContent value="notifications">
+                    <div className="text-muted-foreground text-center py-10">
+                      <Bell className="h-10 w-10 mx-auto mb-4" />
+                      <p>Notification settings will be implemented here.</p>
+                    </div>
+                  </TabsContent>
+                  <TabsContent value="security">
+                    <div className="text-muted-foreground text-center py-10">
+                      <Shield className="h-10 w-10 mx-auto mb-4" />
+                      <p>Security settings will be implemented here.</p>
+                    </div>
+                  </TabsContent>
+                </Tabs>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Task Dialogs and Forms */}
+      {/* New Task Dialog */}
+      <Dialog open={isNewTaskDialogOpen} onOpenChange={setIsNewTaskDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Create New Task</DialogTitle>
+            <DialogDescription>
+              Add details for the new task to be assigned to a team member.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={createTask}>
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="title">Task Title</Label>
+                <Input
+                  id="title"
+                  value={newTask.title}
+                  onChange={(e) => setNewTask({...newTask, title: e.target.value})}
+                  placeholder="Enter task title"
+                  required
+                />
               </div>
-            ) : filteredTasks.length === 0 ? (
-              <div className="text-center py-12 border border-dashed rounded-lg">
-                <div className="flex flex-col items-center justify-center space-y-2">
-                  <ClipboardList className="h-12 w-12 text-muted-foreground" />
-                  <h3 className="text-lg font-medium">No tasks found</h3>
-                  
-                  {tasks.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      You don't have any tasks yet. Create your first task to get started.
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      {activeTab === 'all' 
-                        ? "No tasks match your current filters. Try adjusting your search or filters." 
-                        : `You don't have any ${activeTab.replace('_', ' ')} tasks.`
-                      }
-                    </p>
-                  )}
-                  
-                  <Button 
-                    variant="outline" 
-                    className="mt-2"
-                    onClick={() => setIsNewTaskDialogOpen(true)}
+              <div className="grid gap-2">
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={newTask.description}
+                  onChange={(e) => setNewTask({...newTask, description: e.target.value})}
+                  placeholder="Enter task description (optional)"
+                  className="h-20"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="priority">Priority</Label>
+                  <Select
+                    value={newTask.priority}
+                    onValueChange={(value) => setNewTask({...newTask, priority: value})}
                   >
-                    <Plus className="mr-2 h-4 w-4" />
-                    Create Task
+                    <SelectTrigger id="priority">
+                      <SelectValue placeholder="Select priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="status">Status</Label>
+                  <Select
+                    value={newTask.status}
+                    onValueChange={(value) => setNewTask({...newTask, status: value as TaskStatus})}
+                  >
+                    <SelectTrigger id="status">
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="not_started">Not Started</SelectItem>
+                      <SelectItem value="in_progress">In Progress</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="dueDate">Due Date</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start text-left font-normal"
+                        id="dueDate"
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {newTask.dueDate ? format(newTask.dueDate, "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <Calendar
+                        mode="single"
+                        selected={newTask.dueDate || undefined}
+                        onSelect={(date) => setNewTask({...newTask, dueDate: date || null})}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="assignee">Assign To</Label>
+                  <Select
+                    value={newTask.assignedToId?.toString() || ""}
+                    onValueChange={(value) => setNewTask({...newTask, assignedToId: value ? Number(value) : null})}
+                  >
+                    <SelectTrigger id="assignee">
+                      <SelectValue placeholder="Select assignee" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Unassigned</SelectItem>
+                      {users.map(user => (
+                        <SelectItem key={user.id} value={user.id.toString()}>
+                          {user.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsNewTaskDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit">Create Task</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Task Detail Dialog */}
+      <Dialog open={isTaskDetailOpen} onOpenChange={setIsTaskDetailOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          {selectedTask && (
+            <>
+              <DialogHeader>
+                <div className="flex items-center gap-2">
+                  <DialogTitle>{selectedTask.title}</DialogTitle>
+                  <Badge 
+                    variant="outline" 
+                    className={`
+                      ${selectedTask.status === 'completed' ? 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400' : 
+                        selectedTask.status === 'in_progress' ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400' : 
+                        'bg-slate-50 text-slate-600 dark:bg-slate-900/20 dark:text-slate-400'}
+                    `}
+                  >
+                    {selectedTask.status === 'not_started' ? 'Not Started' : 
+                     selectedTask.status === 'in_progress' ? 'In Progress' : 'Completed'}
+                  </Badge>
+                </div>
+                <DialogDescription>
+                  Task created on {format(new Date(selectedTask.createdAt), "PPP")}
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                {selectedTask.description && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium">Description</h4>
+                    <p className="text-sm text-muted-foreground">{selectedTask.description}</p>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium">Priority</h4>
+                    <Badge 
+                      variant="outline" 
+                      className={`
+                        ${selectedTask.priority === 'high' ? 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400' : 
+                          selectedTask.priority === 'medium' ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400' : 
+                          'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'}
+                      `}
+                    >
+                      {selectedTask.priority.charAt(0).toUpperCase() + selectedTask.priority.slice(1)}
+                    </Badge>
+                  </div>
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium">Due Date</h4>
+                    <p className="text-sm text-muted-foreground">
+                      {selectedTask.dueDate ? format(new Date(selectedTask.dueDate), "PPP") : 'No due date'}
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <h4 className="text-sm font-medium">Assigned To</h4>
+                  {selectedTask.assignedToId ? (
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                        <User className="h-4 w-4 text-primary" />
+                      </div>
+                      <p className="text-sm">{getUserName(selectedTask.assignedToId)}</p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Unassigned</p>
+                  )}
+                </div>
+              </div>
+              <DialogFooter className="flex items-center justify-between sm:justify-between">
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    deleteTask(selectedTask.id);
+                    setIsTaskDetailOpen(false);
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <Trash2 className="h-4 w-4" /> Delete
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsTaskDetailOpen(false)}
+                  >
+                    Close
+                  </Button>
+                  <Button 
+                    onClick={() => {
+                      const newStatus = 
+                        selectedTask.status === 'not_started' ? ('in_progress' as TaskStatus) :
+                        selectedTask.status === 'in_progress' ? ('completed' as TaskStatus) : ('not_started' as TaskStatus);
+                      updateTaskStatus(selectedTask.id, newStatus);
+                      setIsTaskDetailOpen(false);
+                    }}
+                  >
+                    {selectedTask.status === 'completed' ? 'Reopen Task' :
+                     selectedTask.status === 'in_progress' ? 'Mark Completed' : 'Start Task'}
                   </Button>
                 </div>
-              </div>
-            ) : (
-              <AnimatePresence>
-                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {filteredTasks.map((task, index) => (
-                    <motion.div
-                      key={task.id}
-                      initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                      animate={{ opacity: 1, scale: 1, y: 0 }}
-                      exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                      transition={{ duration: 0.3, delay: index * 0.05 }}
-                    >
-                      <Card className="overflow-hidden shadow-sm hover:shadow-md transition-all duration-300 border">
-                        <CardHeader className="p-4 pb-2 flex flex-row justify-between items-start">
-                          <div>
-                            <CardTitle className="text-base font-semibold line-clamp-2">{task.title}</CardTitle>
-                            <CardDescription className="text-xs flex items-center mt-1">
-                              <User className="h-3 w-3 mr-1" />
-                              {task.assignedToId ? getUserName(task.assignedToId) : 'Unassigned'}
-                            </CardDescription>
-                            {task.dueDate && (
-                              <div className="flex items-center mt-1 text-xs text-muted-foreground">
-                                <CalendarIcon className="h-3 w-3 mr-1" />
-                                <span>{format(new Date(task.dueDate), "PPP")}</span>
-                                {new Date(task.dueDate) < new Date() && task.status !== 'completed' && (
-                                  <Badge variant="destructive" className="ml-2 px-1 py-0 h-4 text-[10px]">Overdue</Badge>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div 
-                              className={`px-2 py-1 rounded-full text-xs font-medium 
-                              ${task.priority === 'low' ? priorityColors.low.bg : 
-                                task.priority === 'medium' ? priorityColors.medium.bg : 
-                                task.priority === 'high' ? priorityColors.high.bg : 'bg-gray-100'} 
-                              ${task.priority === 'low' ? priorityColors.low.text : 
-                                task.priority === 'medium' ? priorityColors.medium.text : 
-                                task.priority === 'high' ? priorityColors.high.text : 'text-gray-800'}`}
-                            >
-                              {task.priority}
-                            </div>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" className="h-8 w-8 p-0">
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem 
-                                  onClick={() => {
-                                    setSelectedTask(task);
-                                    setIsTaskDetailOpen(true);
-                                  }}
-                                >
-                                  View Details
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => deleteTask(task.id)}
-                                  className="text-red-600"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="p-4 pt-2">
-                          <p className="text-sm text-muted-foreground line-clamp-2">
-                            {task.description || 'No description provided.'}
-                          </p>
-                        </CardContent>
-                        <CardFooter className="p-4 pt-0 flex justify-between items-center">
-                          <div className="flex items-center">
-                            {task.status === 'not_started' ? statusIcons.not_started :
-                              task.status === 'in_progress' ? statusIcons.in_progress :
-                              task.status === 'completed' ? statusIcons.completed :
-                              <Clock className="h-4 w-4" />}
-                            <span className="text-xs ml-1 capitalize">{task.status.replace('_', ' ')}</span>
-                          </div>
-                          <div className="flex space-x-2">
-                            {task.status !== 'completed' ? (
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                className="text-xs h-8 border-green-200 hover:border-green-300 hover:bg-green-50 text-green-700"
-                                onClick={() => updateTaskStatus(task.id, 'completed' as TaskStatus)}
-                              >
-                                <CheckCircle2 className="h-3 w-3 mr-1" />
-                                Complete
-                              </Button>
-                            ) : (
-                              <Button 
-                                variant="outline" 
-                                size="sm"
-                                className="text-xs h-8 border-blue-200 hover:border-blue-300 hover:bg-blue-50 text-blue-700"
-                                onClick={() => updateTaskStatus(task.id, 'in_progress' as TaskStatus)}
-                              >
-                                <XCircle className="h-3 w-3 mr-1" />
-                                Reopen
-                              </Button>
-                            )}
-                          </div>
-                        </CardFooter>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </div>
-              </AnimatePresence>
-            )}
-          </TabsContent>
-        </Tabs>
-      </motion.div>
-      
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
       <AlertDialog open={isAlertOpen} onOpenChange={setIsAlertOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Disconnected from server</AlertDialogTitle>
+            <AlertDialogTitle>Are you sure you want to delete this task?</AlertDialogTitle>
             <AlertDialogDescription>
-              You have been disconnected from the server. Would you like to reconnect?
+              This action cannot be undone. This will permanently delete the task
+              and remove it from our servers.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction>Reconnect</AlertDialogAction>
+            <AlertDialogAction
+              onClick={() => {
+                if (selectedTask) {
+                  deleteTask(selectedTask.id);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

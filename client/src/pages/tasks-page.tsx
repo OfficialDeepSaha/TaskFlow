@@ -22,8 +22,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { RouteComponentProps } from "wouter";
 
-export default function TasksPage() {
+interface TasksPageProps extends Partial<RouteComponentProps> {
+  // When true, the component won't render its own navbar and sidebar
+  inDashboard?: boolean;
+}
+
+export default function TasksPage({ inDashboard = false }: TasksPageProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [isTaskFormOpen, setIsTaskFormOpen] = useState(false);
   const [editTask, setEditTask] = useState<Task | undefined>(undefined);
@@ -145,70 +151,58 @@ export default function TasksPage() {
     return true;
   });
 
-  return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Sidebar */}
-      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
-
-      {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Navbar 
-          title="My Tasks" 
-          sidebarOpen={sidebarOpen} 
-          setSidebarOpen={setSidebarOpen} 
-          onSearch={(term) => setSearchTerm(term)}
-        />
-
-        <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 p-4 sm:p-6">
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>All Tasks</CardTitle>
-                  <CardDescription>
-                    Manage all your tasks across the system
-                  </CardDescription>
-                </div>
-                <div className="flex space-x-2">
-                  <div className="hidden md:block">
-                    <form onSubmit={handleSearch} className="relative">
-                      <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500 dark:text-gray-400" />
-                      <Input
-                        type="search"
-                        placeholder="Search tasks..."
-                        className="pl-8 w-[200px] lg:w-[300px]"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                      />
-                    </form>
-                  </div>
-                  <TaskFilter onFilterChange={setFilterParams} />
-                  <Button onClick={() => {
-                    setEditTask(undefined);
-                    setIsTaskFormOpen(true);
-                  }}>
-                    <Plus size={16} className="mr-2" /> New Task
-                  </Button>
-                </div>
+  // Render content - conditionally wrap in layout elements based on inDashboard prop
+  const content = (
+    <div className="flex-1 overflow-hidden">
+      <main className="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 p-4 sm:p-6">
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle>All Tasks</CardTitle>
+                <CardDescription>
+                  Manage all your tasks across the system
+                </CardDescription>
               </div>
-            </CardHeader>
-            <CardContent>
-              {isLoading ? (
-                <div className="text-center py-8">
-                  <p className="text-gray-500 dark:text-gray-400">Loading tasks...</p>
+              <div className="flex space-x-2">
+                <div className="hidden md:block">
+                  <form onSubmit={handleSearch} className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500 dark:text-gray-400" />
+                    <Input
+                      type="search"
+                      placeholder="Search tasks..."
+                      className="pl-8 w-[200px] lg:w-[300px]"
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                  </form>
                 </div>
-              ) : (
-                <TaskTable
-                  tasks={filteredTasks}
-                  users={users}
-                  onEdit={handleEditTask}
-                  onDelete={handleDeleteTask}
-                />
-              )}
-            </CardContent>
-          </Card>
-        </main>
-      </div>
+                <TaskFilter onFilterChange={setFilterParams} />
+                <Button onClick={() => {
+                  setEditTask(undefined);
+                  setIsTaskFormOpen(true);
+                }}>
+                  <Plus size={16} className="mr-2" /> New Task
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="text-center py-8">
+                <p className="text-gray-500 dark:text-gray-400">Loading tasks...</p>
+              </div>
+            ) : (
+              <TaskTable
+                tasks={filteredTasks}
+                users={users}
+                onEdit={handleEditTask}
+                onDelete={handleDeleteTask}
+              />
+            )}
+          </CardContent>
+        </Card>
+      </main>
 
       {/* Task Form Dialog */}
       <TaskForm
@@ -234,6 +228,30 @@ export default function TasksPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+
+  // If this component is rendered within the dashboard, return just the content
+  if (inDashboard) {
+    return content;
+  }
+
+  // Otherwise wrap it in the full layout with sidebar and navbar
+  return (
+    <div className="flex h-screen overflow-hidden">
+      {/* Sidebar */}
+      <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
+
+      {/* Main content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <Navbar 
+          title="My Tasks" 
+          sidebarOpen={sidebarOpen} 
+          setSidebarOpen={setSidebarOpen} 
+          onSearch={(term) => setSearchTerm(term)}
+        />
+        {content}
+      </div>
     </div>
   );
 }

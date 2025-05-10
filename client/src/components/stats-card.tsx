@@ -1,54 +1,65 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { CheckSquare, Clock, CheckSquareIcon, AlertTriangle } from "lucide-react";
+import React from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface StatsCardProps {
   title: string;
-  value: number;
-  icon: "total" | "completed" | "in-progress" | "overdue";
+  value: string | number;
+  description?: string;
+  icon?: LucideIcon;
+  trend?: {
+    value: string | number;
+    isUpward: boolean;
+  };
+  className?: string;
+  iconClassName?: string;
+  iconContainerClassName?: string;
 }
 
-export function StatsCard({ title, value, icon }: StatsCardProps) {
-  const getIconComponent = () => {
-    switch (icon) {
-      case "total":
-        return <CheckSquare className="text-xl text-blue-600 dark:text-blue-400" />;
-      case "completed":
-        return <CheckSquareIcon className="text-xl text-green-600 dark:text-green-400" />;
-      case "in-progress":
-        return <Clock className="text-xl text-amber-600 dark:text-amber-400" />;
-      case "overdue":
-        return <AlertTriangle className="text-xl text-red-600 dark:text-red-400" />;
-      default:
-        return <CheckSquare className="text-xl text-blue-600 dark:text-blue-400" />;
-    }
-  };
-
-  const getIconBgColor = () => {
-    switch (icon) {
-      case "total":
-        return "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300";
-      case "completed":
-        return "bg-green-100 dark:bg-green-900 text-green-600 dark:text-green-300";
-      case "in-progress":
-        return "bg-amber-100 dark:bg-amber-900 text-amber-600 dark:text-amber-300";
-      case "overdue":
-        return "bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-300";
-      default:
-        return "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300";
-    }
-  };
-
+export function StatsCard({ 
+  title, 
+  value,
+  description,
+  icon: Icon,
+  trend,
+  className,
+  iconClassName,
+  iconContainerClassName
+}: StatsCardProps) {
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center">
-          <div className={`p-3 rounded-full ${getIconBgColor()}`}>
-            {getIconComponent()}
+    <Card className={cn(
+      "hover:shadow-md transition-all duration-300 overflow-hidden group",
+      className
+    )}>
+      <CardHeader className="pb-2">
+        <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full blur-2xl group-hover:blur-3xl transition-all duration-500 opacity-60"></div>
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex justify-between items-center">
+          <div>
+            <div className="text-3xl font-bold">{value}</div>
+            {description && (
+              <p className="text-xs text-muted-foreground mt-1">{description}</p>
+            )}
+            {trend && (
+              <p className="text-xs text-muted-foreground mt-1 flex items-center">
+                <span className={`${trend.isUpward ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'} font-medium flex items-center mr-2`}>
+                  {trend.isUpward ? '↑' : '↓'} {trend.value}
+                </span>
+                since last period
+              </p>
+            )}
           </div>
-          <div className="ml-4">
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
-            <p className="text-2xl font-semibold">{value}</p>
-          </div>
+          {Icon && (
+            <div className={cn(
+              "h-12 w-12 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform duration-300",
+              iconContainerClassName
+            )}>
+              <Icon className={cn("h-6 w-6", iconClassName)} />
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

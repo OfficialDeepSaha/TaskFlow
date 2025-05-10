@@ -1,403 +1,514 @@
-import React, { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "./ui/card";
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from 'recharts';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { Button } from "./ui/button";
-import { Skeleton } from "./ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import React, { useState, useEffect } from "react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LineChart, BarChart, PieChart, Line, Bar, Pie, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { apiRequest } from "@/lib/queryClient";
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { 
+  BarChart3, 
+  PieChart as PieChartIcon, 
+  LineChart as LineChartIcon, 
+  Activity, 
+  CreditCard, 
+  DollarSign, 
+  Users, 
+  ArrowUp, 
+  ArrowDown, 
+  ArrowRight,
+  Calendar,
+  Clock,
+  Filter,
+  Zap,
+  BarChart4,
+  Layers,
+  Download,
+  RefreshCcw,
+  Gauge
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
-// Type definitions for analytics data
-interface TaskCompletionData {
-  userId: number;
-  userName: string;
-  completed: number;
-  total: number;
-  completionRate: number;
-}
+// Mock data - replace with real API data in production
+const taskCompletionData = [
+  { name: 'Jan', completed: 65, inProgress: 28, notStarted: 12 },
+  { name: 'Feb', completed: 75, inProgress: 20, notStarted: 10 },
+  { name: 'Mar', completed: 80, inProgress: 15, notStarted: 8 },
+  { name: 'Apr', completed: 85, inProgress: 12, notStarted: 6 },
+  { name: 'May', completed: 90, inProgress: 10, notStarted: 5 },
+  { name: 'Jun', completed: 93, inProgress: 7, notStarted: 4 },
+  { name: 'Jul', completed: 80, inProgress: 12, notStarted: 8 },
+];
 
-interface TaskStatusDistribution {
-  status: string;
-  count: number;
-}
+const taskDistributionData = [
+  { name: 'Backend', value: 35, color: '#2563eb' },
+  { name: 'Frontend', value: 25, color: '#db2777' },
+  { name: 'Design', value: 20, color: '#16a34a' },
+  { name: 'QA', value: 15, color: '#eab308' },
+  { name: 'DevOps', value: 5, color: '#9333ea' },
+];
 
-interface TaskTrendData {
-  date: string;
-  completed: number;
-  created: number;
-  overdue: number;
-}
+const userActivityData = [
+  { name: 'Mon', tasks: 12, hours: 7 },
+  { name: 'Tue', tasks: 19, hours: 8 },
+  { name: 'Wed', tasks: 15, hours: 7.5 },
+  { name: 'Thu', tasks: 18, hours: 8.2 },
+  { name: 'Fri', tasks: 14, hours: 6.8 },
+  { name: 'Sat', tasks: 8, hours: 4 },
+  { name: 'Sun', tasks: 5, hours: 3 },
+];
 
-interface AnalyticsData {
-  userCompletionRates: TaskCompletionData[];
-  taskStatusDistribution: TaskStatusDistribution[];
-  taskTrends: TaskTrendData[];
-  overdueByPriority: {
-    priority: string;
-    count: number;
-  }[];
-  timeToCompleteAvg: {
-    priority: string;
-    avgDays: number;
-  }[];
-}
-
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
-const TIME_PERIODS = ['7days', '30days', 'week', 'month'];
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#A259FF'];
 
 export function AnalyticsDashboard() {
-  const [timePeriod, setTimePeriod] = useState<string>('7days');
+  const [activeChart, setActiveChart] = useState("performance");
+  const [timeRange, setTimeRange] = useState("7days");
+  const [isLoading, setIsLoading] = useState(false);
   
-  // Get the date range based on selected time period
-  const getDateRange = () => {
-    const today = new Date();
-    
-    switch (timePeriod) {
-      case '7days':
-        return {
-          start: format(subDays(today, 7), 'yyyy-MM-dd'),
-          end: format(today, 'yyyy-MM-dd')
-        };
-      case '30days':
-        return {
-          start: format(subDays(today, 30), 'yyyy-MM-dd'),
-          end: format(today, 'yyyy-MM-dd')
-        };
-      case 'week':
-        return {
-          start: format(startOfWeek(today), 'yyyy-MM-dd'),
-          end: format(endOfWeek(today), 'yyyy-MM-dd')
-        };
-      case 'month':
-        return {
-          start: format(startOfMonth(today), 'yyyy-MM-dd'),
-          end: format(endOfMonth(today), 'yyyy-MM-dd')
-        };
-      default:
-        return {
-          start: format(subDays(today, 7), 'yyyy-MM-dd'),
-          end: format(today, 'yyyy-MM-dd')
-        };
-    }
-  };
-  
-  // Fetch analytics data
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['analytics', timePeriod],
-    queryFn: async () => {
-      const { start, end } = getDateRange();
-      const response = await axios.get(`/api/analytics?startDate=${start}&endDate=${end}`);
-      return response.data as AnalyticsData;
-    }
-  });
-  
-  // Format percentage for display
-  const formatPercentage = (value: number) => `${Math.round(value * 100)}%`;
-  
-  const handleRefresh = () => {
-    refetch();
-  };
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-bold">Analytics Dashboard</h2>
-          <Skeleton className="h-10 w-32" />
-        </div>
+  // Load data effect
+  useEffect(() => {
+    async function loadAnalyticsData() {
+      setIsLoading(true);
+      try {
+        // In production, fetch actual data
+        // const data = await apiRequest('/api/analytics', { timeRange });
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-6 w-[250px]" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-[200px] w-full" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="p-6 bg-destructive/20 rounded-lg">
-        <h2 className="text-2xl font-bold text-destructive mb-2">Error Loading Analytics</h2>
-        <p>There was a problem loading the analytics data. Please try again later.</p>
-        <Button onClick={handleRefresh} className="mt-4" variant="outline">
-          Try Again
-        </Button>
-      </div>
-    );
-  }
-
+        // Simulate API call
+        await new Promise(resolve => setTimeout(resolve, 800));
+        
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Failed to load analytics data:', error);
+        setIsLoading(false);
+      }
+    }
+    
+    loadAnalyticsData();
+  }, [timeRange]);
+  
+  const fadeInAnimation = {
+    initial: { opacity: 0, y: 15 },
+    animate: { opacity: 1, y: 0 },
+    transition: { duration: 0.4 }
+  };
+  
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h2 className="text-2xl font-bold">Analytics Dashboard</h2>
-        <div className="flex items-center gap-2">
-          <Select value={timePeriod} onValueChange={setTimePeriod}>
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight">Analytics Dashboard</h2>
+          <p className="text-muted-foreground">Monitor team performance and track task completion metrics.</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <Select value={timeRange} onValueChange={setTimeRange}>
             <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Select time period" />
+              <SelectValue placeholder="Select time range" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="7days">Last 7 Days</SelectItem>
-              <SelectItem value="30days">Last 30 Days</SelectItem>
-              <SelectItem value="week">This Week</SelectItem>
-              <SelectItem value="month">This Month</SelectItem>
+              <SelectItem value="today">Today</SelectItem>
+              <SelectItem value="yesterday">Yesterday</SelectItem>
+              <SelectItem value="7days">Last 7 days</SelectItem>
+              <SelectItem value="30days">Last 30 days</SelectItem>
+              <SelectItem value="90days">Last 90 days</SelectItem>
+              <SelectItem value="year">This Year</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={handleRefresh} variant="outline" size="sm">
-            Refresh
+          <Button size="icon" variant="outline" className="h-9 w-9" onClick={() => setIsLoading(true)}>
+            <RefreshCcw className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" className="h-9 flex gap-2 items-center">
+            <Download className="h-4 w-4" />
+            <span>Export</span>
           </Button>
         </div>
       </div>
-
-      <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid grid-cols-2 md:grid-cols-4 w-full mb-4">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="users">User Performance</TabsTrigger>
-          <TabsTrigger value="tasks">Task Metrics</TabsTrigger>
-          <TabsTrigger value="trends">Trends</TabsTrigger>
-        </TabsList>
+      
+      {/* Stats Overview Cards */}
+      <motion.div 
+        className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, staggerChildren: 0.1 }}
+      >
+        <Card className="bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/40 dark:to-blue-900/20 hover:shadow-md transition-all duration-200 border-blue-200 dark:border-blue-800/50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
+            <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/70 flex items-center justify-center">
+              <Layers className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">247</div>
+            <div className="flex items-center text-xs text-blue-600 dark:text-blue-400">
+              <ArrowUp className="h-3 w-3 mr-1" />
+              <span>12% increase</span>
+            </div>
+          </CardContent>
+        </Card>
         
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Task Status Distribution */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Task Status Distribution</CardTitle>
-                <CardDescription>Distribution of tasks by current status</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={data?.taskStatusDistribution}
-                        dataKey="count"
-                        nameKey="status"
-                        cx="50%"
-                        cy="50%"
-                        outerRadius={80}
-                        label={({ name, percent }) => `${name}: ${formatPercentage(percent)}`}
-                      >
-                        {data?.taskStatusDistribution.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => [value, 'Count']} />
-                      <Legend />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Overdue Tasks by Priority */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Overdue Tasks by Priority</CardTitle>
-                <CardDescription>Number of overdue tasks by priority level</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data?.overdueByPriority}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="priority" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="count" name="Overdue Tasks" fill="#FF8042" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4">
-            {/* Task Trend */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Task Activity Trends</CardTitle>
-                <CardDescription>Created, completed, and overdue tasks over time</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={data?.taskTrends}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="date" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line type="monotone" dataKey="created" name="Created Tasks" stroke="#0088FE" />
-                      <Line type="monotone" dataKey="completed" name="Completed Tasks" stroke="#00C49F" />
-                      <Line type="monotone" dataKey="overdue" name="Overdue Tasks" stroke="#FF8042" />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="users" className="space-y-4">
-          {/* User Completion Rates */}
-          <Card>
-            <CardHeader>
-              <CardTitle>User Task Completion Rates</CardTitle>
-              <CardDescription>Task completion percentage by user</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[400px]">
+        <Card className="bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/40 dark:to-green-900/20 hover:shadow-md transition-all duration-200 border-green-200 dark:border-green-800/50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Completion Rate</CardTitle>
+            <div className="h-8 w-8 rounded-full bg-green-100 dark:bg-green-900/70 flex items-center justify-center">
+              <Gauge className="h-4 w-4 text-green-600 dark:text-green-400" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">84%</div>
+            <div className="flex items-center text-xs text-green-600 dark:text-green-400">
+              <ArrowUp className="h-3 w-3 mr-1" />
+              <span>7% increase</span>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-gradient-to-br from-purple-50 to-purple-100/50 dark:from-purple-950/40 dark:to-purple-900/20 hover:shadow-md transition-all duration-200 border-purple-200 dark:border-purple-800/50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Users</CardTitle>
+            <div className="h-8 w-8 rounded-full bg-purple-100 dark:bg-purple-900/70 flex items-center justify-center">
+              <Users className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">23</div>
+            <div className="flex items-center text-xs text-purple-600 dark:text-purple-400">
+              <ArrowRight className="h-3 w-3 mr-1" />
+              <span>Stable</span>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/40 dark:to-amber-900/20 hover:shadow-md transition-all duration-200 border-amber-200 dark:border-amber-800/50">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Avg. Completion Time</CardTitle>
+            <div className="h-8 w-8 rounded-full bg-amber-100 dark:bg-amber-900/70 flex items-center justify-center">
+              <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">2.4 days</div>
+            <div className="flex items-center text-xs text-amber-600 dark:text-amber-400">
+              <ArrowDown className="h-3 w-3 mr-1" />
+              <span>0.5 days faster</span>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+      
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-4 lg:h-[500px]">
+        {/* Performance Chart - Takes 3 columns on larger screens */}
+        <Card className="lg:col-span-3 hover:shadow-md transition-all duration-200 border-muted">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle>Task Completion Trends</CardTitle>
+              <div className="flex gap-2">
+                <Badge variant="outline" className="bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 hover:bg-blue-100">Completed</Badge>
+                <Badge variant="outline" className="bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 hover:bg-amber-100">In Progress</Badge>
+                <Badge variant="outline" className="bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100">Not Started</Badge>
+              </div>
+            </div>
+            <CardDescription>Monthly task completion statistics</CardDescription>
+          </CardHeader>
+          <CardContent className="p-0 h-[400px]">
+            {isLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart
+                  data={taskCompletionData}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                  <XAxis dataKey="name" className="text-xs text-muted-foreground" />
+                  <YAxis className="text-xs text-muted-foreground" />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: 'hsl(var(--card))', 
+                      borderColor: 'hsl(var(--border))',
+                      borderRadius: '0.5rem',
+                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                    }} 
+                    itemStyle={{ fontSize: '12px' }}
+                  />
+                  <Legend />
+                  <Bar dataKey="completed" stackId="a" fill="#2563eb" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="inProgress" stackId="a" fill="#eab308" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="notStarted" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+        
+        {/* Task Distribution Pie Chart - Takes 1 column */}
+        <Card className="hover:shadow-md transition-all duration-200 border-muted">
+          <CardHeader>
+            <CardTitle>Task Distribution</CardTitle>
+            <CardDescription>By department</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="flex items-center justify-center h-[300px]">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>
+              </div>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart 
-                    data={data?.userCompletionRates}
-                    layout="vertical"
-                    margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" domain={[0, 1]} tickFormatter={formatPercentage} />
-                    <YAxis type="category" dataKey="userName" width={80} />
-                    <Tooltip formatter={(value) => [formatPercentage(value as number), 'Completion Rate']} />
-                    <Legend />
-                    <Bar dataKey="completionRate" name="Completion Rate" fill="#8884d8" />
-                  </BarChart>
+                  <PieChart>
+                    <Pie
+                      data={taskDistributionData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={2}
+                      dataKey="value"
+                    >
+                      {taskDistributionData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      contentStyle={{ 
+                        backgroundColor: 'hsl(var(--card))', 
+                        borderColor: 'hsl(var(--border))',
+                        borderRadius: '0.5rem',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                      }} 
+                      itemStyle={{ fontSize: '12px' }}
+                    />
+                    <Legend 
+                      layout="vertical" 
+                      verticalAlign="middle" 
+                      align="right"
+                      wrapperStyle={{ fontSize: '12px' }}
+                    />
+                  </PieChart>
                 </ResponsiveContainer>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Task Counts by User */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Task Counts by User</CardTitle>
-              <CardDescription>Total vs. completed tasks by user</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[400px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart 
-                    data={data?.userCompletionRates}
-                    layout="vertical"
-                    margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis type="category" dataKey="userName" width={80} />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey="total" name="Total Tasks" fill="#0088FE" />
-                    <Bar dataKey="completed" name="Completed Tasks" fill="#00C49F" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="tasks" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Average Time to Complete by Priority */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Average Time to Complete</CardTitle>
-                <CardDescription>Average days to complete tasks by priority</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data?.timeToCompleteAvg}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="priority" />
-                      <YAxis />
-                      <Tooltip formatter={(value) => [`${value} days`, 'Average Time']} />
-                      <Legend />
-                      <Bar dataKey="avgDays" name="Average Days" fill="#8884d8" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Task Status Distribution */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Task Status Distribution</CardTitle>
-                <CardDescription>Distribution of tasks by current status</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[300px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data?.taskStatusDistribution}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="status" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Bar dataKey="count" name="Tasks" fill="#00C49F" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+      
+      {/* User Activity Chart */}
+      <Card className="hover:shadow-md transition-all duration-200 border-muted">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>User Activity</CardTitle>
+              <CardDescription>Task completion and time spent</CardDescription>
+            </div>
+            <Select defaultValue="weekly">
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Select view" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="daily">Daily</SelectItem>
+                <SelectItem value="weekly">Weekly</SelectItem>
+                <SelectItem value="monthly">Monthly</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-        </TabsContent>
-
-        <TabsContent value="trends" className="space-y-4">
-          {/* Task Trends Over Time */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Task Activity Over Time</CardTitle>
-              <CardDescription>Created, completed, and overdue tasks by date</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[400px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={data?.taskTrends}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="created" name="Created Tasks" stroke="#0088FE" />
-                    <Line type="monotone" dataKey="completed" name="Completed Tasks" stroke="#00C49F" />
-                    <Line type="monotone" dataKey="overdue" name="Overdue Tasks" stroke="#FF8042" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+        </CardHeader>
+        <CardContent className="p-0 h-[400px]">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={userActivityData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 20 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted/30" />
+                <XAxis dataKey="name" className="text-xs text-muted-foreground" />
+                <YAxis yAxisId="left" className="text-xs text-muted-foreground" />
+                <YAxis yAxisId="right" orientation="right" className="text-xs text-muted-foreground" />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: 'hsl(var(--card))', 
+                    borderColor: 'hsl(var(--border))',
+                    borderRadius: '0.5rem',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                  }} 
+                  itemStyle={{ fontSize: '12px' }}
+                />
+                <Legend />
+                <Line yAxisId="left" type="monotone" dataKey="tasks" stroke="#2563eb" activeDot={{ r: 8 }} strokeWidth={2} />
+                <Line yAxisId="right" type="monotone" dataKey="hours" stroke="#10b981" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </CardContent>
+      </Card>
+      
+      {/* Bottom Cards */}
+      <div className="grid gap-4 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+        {/* Top Performers */}
+        <Card className="hover:shadow-md transition-all duration-200 border-muted">
+          <CardHeader className="pb-2">
+            <CardTitle>Top Performers</CardTitle>
+            <CardDescription>Team members with highest completion rate</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {isLoading ? (
+                <div className="flex items-center justify-center h-[180px]">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center">
+                    <div className="font-medium text-sm w-10">1.</div>
+                    <div className="h-8 w-8 rounded-full bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center mr-2">
+                      <span className="text-xs font-semibold text-orange-600 dark:text-orange-400">JD</span>
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium">Jane Doe</div>
+                      <div className="text-xs text-muted-foreground">Frontend Developer</div>
+                    </div>
+                    <div className="text-sm font-medium">98%</div>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center">
+                    <div className="font-medium text-sm w-10">2.</div>
+                    <div className="h-8 w-8 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center mr-2">
+                      <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">RB</span>
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium">Robert Brown</div>
+                      <div className="text-xs text-muted-foreground">Project Manager</div>
+                    </div>
+                    <div className="text-sm font-medium">96%</div>
+                  </div>
+                  <Separator />
+                  <div className="flex items-center">
+                    <div className="font-medium text-sm w-10">3.</div>
+                    <div className="h-8 w-8 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center mr-2">
+                      <span className="text-xs font-semibold text-purple-600 dark:text-purple-400">ST</span>
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium">Sarah Thomas</div>
+                      <div className="text-xs text-muted-foreground">UX Designer</div>
+                    </div>
+                    <div className="text-sm font-medium">92%</div>
+                  </div>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Upcoming Deadlines */}
+        <Card className="hover:shadow-md transition-all duration-200 border-muted">
+          <CardHeader className="pb-2">
+            <CardTitle>Upcoming Deadlines</CardTitle>
+            <CardDescription>Tasks due in the next 7 days</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {isLoading ? (
+                <div className="flex items-center justify-center h-[180px]">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex">
+                    <div className="p-2 rounded-md bg-red-50 dark:bg-red-900/20 mr-3">
+                      <Calendar className="h-4 w-4 text-red-600 dark:text-red-400" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium">API Integration (Backend)</div>
+                      <div className="text-xs text-muted-foreground">Due: Tomorrow at 5:00 PM</div>
+                      <Badge variant="outline" className="mt-1 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400">High</Badge>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div className="flex">
+                    <div className="p-2 rounded-md bg-amber-50 dark:bg-amber-900/20 mr-3">
+                      <Calendar className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium">User Dashboard Redesign</div>
+                      <div className="text-xs text-muted-foreground">Due: In 3 days</div>
+                      <Badge variant="outline" className="mt-1 bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400">Medium</Badge>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div className="flex">
+                    <div className="p-2 rounded-md bg-blue-50 dark:bg-blue-900/20 mr-3">
+                      <Calendar className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium">Weekly Team Meeting</div>
+                      <div className="text-xs text-muted-foreground">Due: In 5 days</div>
+                      <Badge variant="outline" className="mt-1 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">Low</Badge>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        
+        {/* Recent Activities */}
+        <Card className="hover:shadow-md transition-all duration-200 border-muted">
+          <CardHeader className="pb-2">
+            <CardTitle>Recent Activities</CardTitle>
+            <CardDescription>Latest system activity</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {isLoading ? (
+                <div className="flex items-center justify-center h-[180px]">
+                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex">
+                    <div className="p-2 rounded-full bg-green-50 dark:bg-green-900/20 mr-3 h-10 w-10 flex items-center justify-center">
+                      <Zap className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium">New task created</div>
+                      <div className="text-xs text-muted-foreground">Backend API Integration by Jane</div>
+                      <div className="text-xs text-muted-foreground">10 minutes ago</div>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div className="flex">
+                    <div className="p-2 rounded-full bg-purple-50 dark:bg-purple-900/20 mr-3 h-10 w-10 flex items-center justify-center">
+                      <Users className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium">User added to project</div>
+                      <div className="text-xs text-muted-foreground">Robert added to Frontend Redesign</div>
+                      <div className="text-xs text-muted-foreground">1 hour ago</div>
+                    </div>
+                  </div>
+                  <Separator />
+                  <div className="flex">
+                    <div className="p-2 rounded-full bg-blue-50 dark:bg-blue-900/20 mr-3 h-10 w-10 flex items-center justify-center">
+                      <Activity className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-medium">Project status updated</div>
+                      <div className="text-xs text-muted-foreground">Mobile App changed to In Progress</div>
+                      <div className="text-xs text-muted-foreground">3 hours ago</div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
