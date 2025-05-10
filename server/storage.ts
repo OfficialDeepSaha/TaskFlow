@@ -27,6 +27,8 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
+  getUserNotificationPreferences(userId: number): Promise<any[]>;
+  saveUserNotificationPreferences(userId: number, preferences: any[]): Promise<boolean>;
   updateUserNotificationPreferences(userId: number, preferences: any): Promise<boolean>;
   
   // Task operations
@@ -39,6 +41,7 @@ export interface IStorage {
   getTasksByCreator(userId: number): Promise<Task[]>;
   getOverdueTasks(userId: number): Promise<Task[]>;
   searchTasks(query: string, filters?: TaskFilters): Promise<Task[]>;
+  getRecurringTasks(): Promise<Task[]>; // Get all recurring tasks
   createRecurringTaskInstances(task: Task): Promise<Task[]>; // For handling recurring tasks
   
   // Notification operations
@@ -133,6 +136,59 @@ export class MemStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return Array.from(this.users.values());
+  }
+
+  async getUserNotificationPreferences(userId: number): Promise<any[]> {
+    const user = this.users.get(userId);
+    if (!user || !user.notificationPreferences) {
+      // Return default preferences if none are set
+      return [
+        {
+          channel: NotificationChannel.EMAIL,
+          enabled: true,
+          events: {
+            taskAssigned: true,
+            taskUpdated: true,
+            taskCompleted: true,
+            dueDateReminder: true,
+            mentions: true
+          }
+        },
+        {
+          channel: NotificationChannel.IN_APP,
+          enabled: true,
+          events: {
+            taskAssigned: true,
+            taskUpdated: true,
+            taskCompleted: true,
+            dueDateReminder: true,
+            mentions: true
+          }
+        }
+      ];
+    }
+    return user.notificationPreferences.channels || [];
+  }
+
+  async saveUserNotificationPreferences(userId: number, preferences: any[]): Promise<boolean> {
+    const user = this.users.get(userId);
+    if (!user) {
+      return false;
+    }
+    if (!user.notificationPreferences) {
+      user.notificationPreferences = {
+        channels: preferences,
+        taskAssignment: true,
+        taskStatusUpdate: true,
+        taskCompletion: true,
+        taskDueSoon: true,
+        systemUpdates: true
+      };
+    } else {
+      user.notificationPreferences.channels = preferences;
+    }
+    this.users.set(userId, user);
+    return true;
   }
   
   async updateUserNotificationPreferences(userId: number, preferences: any): Promise<boolean> {
@@ -297,6 +353,12 @@ export class MemStorage implements IStorage {
     return filteredTasks;
   }
 
+  async getRecurringTasks(): Promise<Task[]> {
+    // Filter tasks to get only recurring ones
+    return Array.from(this.tasks.values())
+      .filter(task => task.isRecurring === true);
+  }
+
   // Notification operations
   async createNotification(insertNotification: InsertNotification): Promise<Notification> {
     const id = this.notificationCurrentId++;
@@ -432,7 +494,8 @@ export class MemStorage implements IStorage {
         assignedToId: task.assignedToId,
         isRecurring: false, // Child tasks are not recurring themselves
         recurringPattern: RecurringPattern.NONE,
-        parentTaskId: task.id
+        parentTaskId: task.id,
+        colorCode: TaskColor.BLUE // Default to blue for consistency
       };
       
       const newTask = await this.createTask(newTaskData);
@@ -457,19 +520,37 @@ export class MemStorage implements IStorage {
 }
 
 // Create a DatabaseStorage implementation for PostgreSQL
-export class DatabaseStorage implements IStorage {
+class DatabaseStorage implements IStorage {
   db: any;
-  sessionStore: any; // Express SessionStore
+  sessionStore: any;
 
   constructor() {
-    this.db = drizzle(client);
-    this.sessionStore = new PostgresSessionStore({ 
-      conObject: {
-        connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: false }
-      }, 
-      createTableIfMissing: true 
-    });
+    if (!process.env.DATABASE_URL) {
+      console.error('DATABASE_URL environment variable is not set!');
+      throw new Error('DATABASE_URL is required for database connection');
+    }
+    
+    console.log('Initializing database connection...');
+    try {
+      this.db = drizzle(client);
+      console.log('Database connection established successfully');
+      
+      // Configure PostgreSQL session store with enhanced settings
+      this.sessionStore = new PostgresSessionStore({ 
+        conObject: {
+          connectionString: process.env.DATABASE_URL,
+          ssl: { rejectUnauthorized: false }
+        },
+        tableName: 'session', // Default table name
+        createTableIfMissing: true,
+        pruneSessionInterval: 60, // minutes
+        errorLog: console.error.bind(console),
+      });
+      console.log('Session store initialized with PostgreSQL');
+    } catch (error) {
+      console.error('Failed to initialize database connection:', error);
+      throw error;
+    }
   }
 
   // User operations
@@ -490,6 +571,144 @@ export class DatabaseStorage implements IStorage {
 
   async getAllUsers(): Promise<User[]> {
     return await this.db.select().from(users);
+  }
+  
+  async getUserNotificationPreferences(userId: number): Promise<any[]> {
+    try {
+      console.log(`Getting notification preferences for user ID: ${userId}`);
+      
+      // Direct query to get user with explicit selection of notificationPreferences field
+      const result = await this.db.select({notificationPreferences: users.notificationPreferences})
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      
+      // Log what we found for debugging
+      console.log(`User notification preferences query result:`, JSON.stringify(result));
+      
+      const user = result[0];
+      if (!user || !user.notificationPreferences) {
+        console.log(`No notification preferences found for user ${userId}, returning defaults`);
+        // Return default preferences if none are set
+        return [
+          {
+            channel: NotificationChannel.EMAIL,
+            enabled: true,
+            events: {
+              taskAssigned: true,
+              taskUpdated: true,
+              taskCompleted: true,
+              dueDateReminder: true,
+              mentions: true
+            }
+          },
+          {
+            channel: NotificationChannel.IN_APP,
+            enabled: true,
+            events: {
+              taskAssigned: true,
+              taskUpdated: true,
+              taskCompleted: true,
+              dueDateReminder: true,
+              mentions: true
+            }
+          }
+        ];
+      }
+      
+      // Check if channels exists, otherwise return the notification preferences as a whole 
+      // (some database structures might store it differently)
+      const channels = user.notificationPreferences.channels;
+      
+      if (Array.isArray(channels)) {
+        console.log(`Returning ${channels.length} notification channels for user ${userId}`);
+        return channels;
+      } else if (typeof user.notificationPreferences === 'object') {
+        // If no channels array but we have preferences object, construct a compatible format
+        console.log(`Converting notification preferences to compatible format for user ${userId}`);
+        return [
+          {
+            channel: NotificationChannel.EMAIL,
+            enabled: user.notificationPreferences.taskAssignment || true,
+            events: {
+              taskAssigned: user.notificationPreferences.taskAssignment || true,
+              taskUpdated: user.notificationPreferences.taskStatusUpdate || true,
+              taskCompleted: user.notificationPreferences.taskCompletion || true,
+              dueDateReminder: user.notificationPreferences.taskDueSoon || true,
+              mentions: true
+            }
+          },
+          {
+            channel: NotificationChannel.IN_APP,
+            enabled: true,
+            events: {
+              taskAssigned: user.notificationPreferences.taskAssignment || true,
+              taskUpdated: user.notificationPreferences.taskStatusUpdate || true,
+              taskCompleted: user.notificationPreferences.taskCompletion || true,
+              dueDateReminder: user.notificationPreferences.taskDueSoon || true,
+              mentions: true
+            }
+          }
+        ];
+      }
+      
+      // Fallback to empty array
+      console.log(`No valid notification preferences structure found for user ${userId}`);
+      return [];
+    } catch (error) {
+      console.error('Error getting user notification preferences:', error);
+      return [];
+    }
+  }
+
+  async saveUserNotificationPreferences(userId: number, preferences: any[]): Promise<boolean> {
+    try {
+      console.log(`Saving notification preferences for user ID: ${userId}`);
+      console.log(`Preferences to save:`, JSON.stringify(preferences));
+      
+      // First get current preferences to properly merge them
+      const user = await this.getUser(userId);
+      if (!user) {
+        console.log(`User ${userId} not found, cannot save preferences`);
+        return false;
+      }
+      
+      // Prepare the updated notification preferences
+      let updatedPrefs;
+      if (!user.notificationPreferences) {
+        // If no existing preferences, create a new structured object
+        console.log(`Creating new preferences structure for user ${userId}`);
+        updatedPrefs = {
+          channels: preferences,
+          taskAssignment: true,
+          taskStatusUpdate: true,
+          taskCompletion: true,
+          taskDueSoon: true,
+          systemUpdates: true
+        };
+      } else {
+        // Merge with existing preferences
+        console.log(`Merging with existing preferences for user ${userId}`);
+        updatedPrefs = {
+          ...user.notificationPreferences,
+          channels: preferences
+        };
+      }
+      
+      console.log(`Final preferences structure to save:`, JSON.stringify(updatedPrefs));
+      
+      // Update the user with the new preferences
+      const result = await this.db.update(users)
+        .set({ notificationPreferences: updatedPrefs })
+        .where(eq(users.id, userId));
+      
+      const success = result.count > 0;
+      console.log(`Preferences ${success ? 'successfully saved' : 'failed to save'} for user ${userId}`);
+      return success;
+    } catch (error) {
+      console.error('Error saving user notification preferences:', error);
+      return false;
+    }
   }
   
   async updateUserNotificationPreferences(userId: number, preferences: any): Promise<boolean> {
@@ -616,6 +835,17 @@ export class DatabaseStorage implements IStorage {
     return filteredTasks;
   }
 
+  async getRecurringTasks(): Promise<Task[]> {
+    try {
+      // Use a direct database query to get recurring tasks efficiently
+      return await this.db.select().from(tasks)
+        .where(eq(tasks.isRecurring, true));
+    } catch (error) {
+      console.error('Error fetching recurring tasks:', error);
+      return [];
+    }
+  }
+
   // Notification operations
   async createNotification(notification: InsertNotification): Promise<Notification> {
     const result = await this.db.insert(notifications).values({
@@ -733,7 +963,8 @@ export class DatabaseStorage implements IStorage {
         assignedToId: task.assignedToId,
         isRecurring: false, // Child tasks are not recurring themselves
         recurringPattern: RecurringPattern.NONE,
-        parentTaskId: task.id
+        parentTaskId: task.id,
+        colorCode: TaskColor.BLUE // Default to blue for consistency
       };
       
       const newTask = await this.createTask(newTaskData);
@@ -758,8 +989,14 @@ export class DatabaseStorage implements IStorage {
 }
 
 // Choose the storage implementation based on environment
-// For this project, we'll use the in-memory storage to keep things simple
-export const storage = new MemStorage();
+// We will now use database storage for better persistence
+const dbStorage = new DatabaseStorage();
 
-// To use the database storage, uncomment the following line:
-// export const storage = new DatabaseStorage();
+// Using actual users from database, no test users will be created
+console.log('Using database storage with existing users');
+
+export const storage = dbStorage;
+
+// Database storage is now being used for persistent authentication and data storage
+// To switch back to memory storage for testing, use:
+// export const storage = new MemStorage();

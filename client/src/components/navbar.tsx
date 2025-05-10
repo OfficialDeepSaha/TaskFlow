@@ -1,4 +1,5 @@
-import { Bell, Search, Menu, X, Sun, Moon } from "lucide-react";
+import { Search, Menu, X, Sun, Moon } from "lucide-react";
+import { NotificationCenter } from "@/components/notification-center";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,9 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/hooks/use-auth";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { getInitials } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 
 interface NavbarProps {
@@ -38,6 +38,8 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
   const { user, logoutMutation } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [location, navigate] = useLocation();
+  
+  // Notifications completely removed
 
   // Handle search submission
   const handleSearch = (e: React.FormEvent) => {
@@ -46,13 +48,6 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
       onSearch(searchTerm);
     }
   };
-
-  // Fetch notifications
-  const { data: notifications = [] } = useQuery({
-    queryKey: ["/api/notifications"],
-  });
-
-  const unreadNotifications = notifications.filter((n: any) => !n.read);
 
   const handleLogout = () => {
     logoutMutation.mutate();
@@ -91,6 +86,9 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
               />
             </form>
 
+            {/* Notification Center */}
+            <NotificationCenter />
+            
             {/* Theme Toggle */}
             <Button
               variant="ghost"
@@ -105,54 +103,6 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
                 <Moon className="h-5 w-5" />
               )}
             </Button>
-
-            {/* Notifications Dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                  <Bell className="h-5 w-5 text-gray-500 dark:text-gray-300" />
-                  {unreadNotifications.length > 0 && (
-                    <span className="absolute top-0 right-0 h-4 w-4 bg-red-500 rounded-full text-xs text-white flex items-center justify-center">
-                      {unreadNotifications.length}
-                    </span>
-                  )}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-80">
-                <DropdownMenuLabel>Notifications</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                
-                {notifications.length === 0 ? (
-                  <div className="py-2 px-4 text-center text-sm text-gray-500 dark:text-gray-400">
-                    No notifications
-                  </div>
-                ) : (
-                  notifications.slice(0, 5).map((notification: any) => (
-                    <DropdownMenuItem key={notification.id} className="py-3 cursor-default">
-                      <div className="flex items-start">
-                        <div className="ml-3 space-y-1">
-                          <p className="text-sm font-medium">{notification.message}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400">
-                            {new Date(notification.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                    </DropdownMenuItem>
-                  ))
-                )}
-                
-                {notifications.length > 0 && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem className="text-center">
-                      <span className="text-sm text-blue-600 dark:text-blue-400 mx-auto">
-                        View all notifications
-                      </span>
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
 
             {/* User Profile Dropdown */}
             <DropdownMenu>

@@ -7,10 +7,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { CheckSquareIcon } from "lucide-react";
-import { apiRequest, queryClient, getQueryFn } from "@/lib/queryClient";
+import { useMutation } from "@tanstack/react-query";
+import { CheckSquareIcon, LogInIcon, UserPlusIcon, LockIcon, AtSignIcon, UserIcon } from "lucide-react";
+import { apiRequest, queryClient, normalizeApiUrl } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { motion } from "framer-motion";
 import {
   Card,
   CardContent,
@@ -53,12 +54,6 @@ export default function AuthPage() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [, navigate] = useLocation();
   const { toast } = useToast();
-  
-  // Check if user is logged in
-  const { data: user } = useQuery<User | undefined, Error>({
-    queryKey: ["/api/user"],
-    queryFn: getQueryFn({ on401: "returnNull" }),
-  });
   
   // Login form
   const loginForm = useForm<LoginData>({
@@ -127,12 +122,24 @@ export default function AuthPage() {
     },
   });
 
-  // Redirect if already logged in
+  // Check for existing login with a simple API call
   useEffect(() => {
-    if (user) {
-      navigate("/dashboard");
-    }
-  }, [user, navigate]);
+    const checkAuth = async () => {
+      try {
+        const response = await fetch(normalizeApiUrl('/api/user'));
+        if (response.ok) {
+          const userData = await response.json();
+          queryClient.setQueryData(["/api/user"], userData);
+          navigate("/dashboard");
+        }
+      } catch (error) {
+        // Ignore errors, let the user login
+        console.log('Not logged in, showing auth form');
+      }
+    };
+    
+    checkAuth();
+  }, [navigate]);
 
   // Handle form submissions
   const onLoginSubmit = (data: LoginData) => {
@@ -143,17 +150,94 @@ export default function AuthPage() {
     registerMutation.mutate(data);
   };
 
+  // Animation variants
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    visible: {
+      opacity: 1,
+      transition: {
+        delayChildren: 0.3,
+        staggerChildren: 0.2
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { y: 20, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: { type: "spring", stiffness: 300, damping: 24 }
+    }
+  };
+
+  const buttonVariants = {
+    idle: { scale: 1 },
+    hover: { scale: 1.05 },
+    tap: { scale: 0.95 }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
-      <div className="max-w-screen-lg w-full grid grid-cols-1 md:grid-cols-2 gap-8">
+    <div className="min-h-screen flex items-center justify-center relative overflow-hidden bg-gradient-to-br from-indigo-900 via-purple-900 to-fuchsia-800">
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <motion.div 
+          className="absolute -top-10 -left-10 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-xl opacity-50"
+          animate={{
+            x: [0, 30, 0],
+            y: [0, 40, 0],
+          }}
+          transition={{
+            duration: 10,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+        />
+        <motion.div 
+          className="absolute top-1/2 -right-10 w-80 h-80 bg-blue-500 rounded-full mix-blend-multiply filter blur-xl opacity-40"
+          animate={{
+            x: [0, -30, 0],
+            y: [0, -40, 0],
+          }}
+          transition={{
+            duration: 13,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+        />
+        <motion.div 
+          className="absolute -bottom-10 left-1/4 w-60 h-60 bg-fuchsia-500 rounded-full mix-blend-multiply filter blur-xl opacity-40"
+          animate={{
+            x: [0, 50, 0],
+            y: [0, -30, 0],
+          }}
+          transition={{
+            duration: 11,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+        />
+      </div>
+      
+      {/* Grid content container */}
+      <motion.div 
+        className="max-w-screen-lg w-full grid grid-cols-1 md:grid-cols-2 gap-8 z-10 p-4"
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+      >
         {/* Auth Form */}
-        <div>
-          <Card className="w-full">
+        <motion.div variants={itemVariants}>
+          <Card className="w-full backdrop-blur-lg bg-white/10 border-white/20 shadow-2xl">
             <CardHeader className="space-y-1">
-              <CardTitle className="text-2xl font-bold">
-                {isRegistering ? "Create an account" : "Welcome back"}
+              <CardTitle className="text-2xl font-bold text-white flex items-center gap-2">
+                {isRegistering ? (
+                  <><UserPlusIcon className="w-6 h-6 text-fuchsia-400" /> Create an account</>
+                ) : (
+                  <><LogInIcon className="w-6 h-6 text-blue-400" /> Welcome back</>
+                )}
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-gray-200">
                 {isRegistering
                   ? "Enter your information to create an account"
                   : "Enter your credentials to sign in to your account"}
@@ -163,161 +247,300 @@ export default function AuthPage() {
               {isRegistering ? (
                 <Form {...registerForm}>
                   <form onSubmit={registerForm.handleSubmit(onRegisterSubmit)} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="name">Full Name</Label>
-                      <Input
-                        id="name"
-                        placeholder="John Doe"
-                        {...registerForm.register("name")}
-                      />
+                    <motion.div className="space-y-2" variants={itemVariants}>
+                      <Label htmlFor="name" className="text-gray-200">Full Name</Label>
+                      <div className="relative">
+                        <UserIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-300 h-4 w-4" />
+                        <Input
+                          id="name"
+                          placeholder="John Doe"
+                          className="pl-10 bg-white/5 border-white/10 text-white focus:ring-2 focus:ring-fuchsia-500 transition-all"
+                          {...registerForm.register("name")}
+                        />
+                      </div>
                       {registerForm.formState.errors.name && (
-                        <p className="text-sm text-red-500">{registerForm.formState.errors.name.message}</p>
+                        <motion.p 
+                          className="text-sm text-red-300"
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                        >
+                          {registerForm.formState.errors.name.message}
+                        </motion.p>
                       )}
-                    </div>
+                    </motion.div>
                     
-                    <div className="space-y-2">
-                      <Label htmlFor="registerEmail">Email</Label>
-                      <Input
-                        id="registerEmail"
-                        type="email"
-                        placeholder="john@example.com"
-                        {...registerForm.register("username")}
-                      />
+                    <motion.div className="space-y-2" variants={itemVariants}>
+                      <Label htmlFor="registerEmail" className="text-gray-200">Email</Label>
+                      <div className="relative">
+                        <AtSignIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-300 h-4 w-4" />
+                        <Input
+                          id="registerEmail"
+                          type="email"
+                          placeholder="john@example.com"
+                          className="pl-10 bg-white/5 border-white/10 text-white focus:ring-2 focus:ring-fuchsia-500 transition-all"
+                          {...registerForm.register("username")}
+                        />
+                      </div>
                       {registerForm.formState.errors.username && (
-                        <p className="text-sm text-red-500">{registerForm.formState.errors.username.message}</p>
+                        <motion.p 
+                          className="text-sm text-red-300"
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                        >
+                          {registerForm.formState.errors.username.message}
+                        </motion.p>
                       )}
-                    </div>
+                    </motion.div>
                     
-                    <div className="space-y-2">
-                      <Label htmlFor="registerPassword">Password</Label>
-                      <Input
-                        id="registerPassword"
-                        type="password"
-                        placeholder="••••••••"
-                        {...registerForm.register("password")}
-                      />
+                    <motion.div className="space-y-2" variants={itemVariants}>
+                      <Label htmlFor="registerPassword" className="text-gray-200">Password</Label>
+                      <div className="relative">
+                        <LockIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-300 h-4 w-4" />
+                        <Input
+                          id="registerPassword"
+                          type="password"
+                          placeholder="••••••••"
+                          className="pl-10 bg-white/5 border-white/10 text-white focus:ring-2 focus:ring-fuchsia-500 transition-all"
+                          {...registerForm.register("password")}
+                        />
+                      </div>
                       {registerForm.formState.errors.password && (
-                        <p className="text-sm text-red-500">{registerForm.formState.errors.password.message}</p>
+                        <motion.p 
+                          className="text-sm text-red-300"
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                        >
+                          {registerForm.formState.errors.password.message}
+                        </motion.p>
                       )}
-                    </div>
+                    </motion.div>
                     
-                    <div className="space-y-2">
-                      <Label htmlFor="confirmPassword">Confirm Password</Label>
-                      <Input
-                        id="confirmPassword"
-                        type="password"
-                        placeholder="••••••••"
-                        {...registerForm.register("confirmPassword")}
-                      />
+                    <motion.div className="space-y-2" variants={itemVariants}>
+                      <Label htmlFor="confirmPassword" className="text-gray-200">Confirm Password</Label>
+                      <div className="relative">
+                        <LockIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-300 h-4 w-4" />
+                        <Input
+                          id="confirmPassword"
+                          type="password"
+                          placeholder="••••••••"
+                          className="pl-10 bg-white/5 border-white/10 text-white focus:ring-2 focus:ring-fuchsia-500 transition-all"
+                          {...registerForm.register("confirmPassword")}
+                        />
+                      </div>
                       {registerForm.formState.errors.confirmPassword && (
-                        <p className="text-sm text-red-500">{registerForm.formState.errors.confirmPassword.message}</p>
+                        <motion.p 
+                          className="text-sm text-red-300"
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                        >
+                          {registerForm.formState.errors.confirmPassword.message}
+                        </motion.p>
                       )}
-                    </div>
+                    </motion.div>
                     
-                    <Button 
-                      type="submit" 
-                      className="w-full"
-                      disabled={registerMutation.isPending}
-                    >
-                      {registerMutation.isPending ? "Creating Account..." : "Create Account"}
-                    </Button>
+                    <motion.div variants={itemVariants}>
+                      <motion.button
+                        type="submit"
+                        className="w-full bg-gradient-to-r from-fuchsia-600 to-blue-600 text-white py-2 px-4 rounded-md font-medium shadow-lg hover:shadow-fuchsia-500/30 transition-all"
+                        disabled={registerMutation.isPending}
+                        variants={buttonVariants}
+                        initial="idle"
+                        whileHover="hover"
+                        whileTap="tap"
+                      >
+                        {registerMutation.isPending ? 
+                          <span className="flex items-center justify-center gap-2">
+                            <motion.span 
+                              className="inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full"
+                              animate={{ rotate: 360 }}
+                              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                            /> 
+                            Creating Account...
+                          </span> : 
+                          "Create Account"
+                        }
+                      </motion.button>
+                    </motion.div>
                   </form>
                 </Form>
               ) : (
                 <Form {...loginForm}>
                   <form onSubmit={loginForm.handleSubmit(onLoginSubmit)} className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="loginEmail">Email</Label>
-                      <Input
-                        id="loginEmail"
-                        type="email"
-                        placeholder="john@example.com"
-                        {...loginForm.register("username")}
-                      />
-                      {loginForm.formState.errors.username && (
-                        <p className="text-sm text-red-500">{loginForm.formState.errors.username.message}</p>
-                      )}
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="loginPassword">Password</Label>
-                      <Input
-                        id="loginPassword"
-                        type="password"
-                        placeholder="••••••••"
-                        {...loginForm.register("password")}
-                      />
-                      {loginForm.formState.errors.password && (
-                        <p className="text-sm text-red-500">{loginForm.formState.errors.password.message}</p>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox id="remember" />
-                        <Label htmlFor="remember">Remember me</Label>
+                    <motion.div className="space-y-2" variants={itemVariants}>
+                      <Label htmlFor="loginEmail" className="text-gray-200">Email</Label>
+                      <div className="relative">
+                        <AtSignIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-300 h-4 w-4" />
+                        <Input
+                          id="loginEmail"
+                          type="email"
+                          placeholder="john@example.com"
+                          className="pl-10 bg-white/5 border-white/10 text-white focus:ring-2 focus:ring-blue-500 transition-all"
+                          {...loginForm.register("username")}
+                        />
                       </div>
-                      <Button variant="link" className="px-0">
+                      {loginForm.formState.errors.username && (
+                        <motion.p 
+                          className="text-sm text-red-300"
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                        >
+                          {loginForm.formState.errors.username.message}
+                        </motion.p>
+                      )}
+                    </motion.div>
+                    
+                    <motion.div className="space-y-2" variants={itemVariants}>
+                      <Label htmlFor="loginPassword" className="text-gray-200">Password</Label>
+                      <div className="relative">
+                        <LockIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-300 h-4 w-4" />
+                        <Input
+                          id="loginPassword"
+                          type="password"
+                          placeholder="••••••••"
+                          className="pl-10 bg-white/5 border-white/10 text-white focus:ring-2 focus:ring-blue-500 transition-all"
+                          {...loginForm.register("password")}
+                        />
+                      </div>
+                      {loginForm.formState.errors.password && (
+                        <motion.p 
+                          className="text-sm text-red-300"
+                          initial={{ opacity: 0, y: -10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                        >
+                          {loginForm.formState.errors.password.message}
+                        </motion.p>
+                      )}
+                    </motion.div>
+                    
+                    <motion.div className="flex items-center justify-between" variants={itemVariants}>
+                      <div className="flex items-center space-x-2">
+                        <Checkbox id="remember" className="border-white/30 data-[state=checked]:bg-blue-500" />
+                        <Label htmlFor="remember" className="text-gray-200">Remember me</Label>
+                      </div>
+                      <Button variant="link" className="text-blue-300 hover:text-blue-200 px-0">
                         Forgot password?
                       </Button>
-                    </div>
+                    </motion.div>
                     
-                    <Button 
-                      type="submit" 
-                      className="w-full"
-                      disabled={loginMutation.isPending}
-                    >
-                      {loginMutation.isPending ? "Signing in..." : "Sign in"}
-                    </Button>
+                    <motion.div variants={itemVariants}>
+                      <motion.button
+                        type="submit"
+                        className="w-full bg-gradient-to-r from-blue-600 to-fuchsia-600 text-white py-2 px-4 rounded-md font-medium shadow-lg hover:shadow-blue-500/30 transition-all"
+                        disabled={loginMutation.isPending}
+                        variants={buttonVariants}
+                        initial="idle"
+                        whileHover="hover"
+                        whileTap="tap"
+                      >
+                        {loginMutation.isPending ? 
+                          <span className="flex items-center justify-center gap-2">
+                            <motion.span 
+                              className="inline-block h-4 w-4 border-2 border-white border-t-transparent rounded-full"
+                              animate={{ rotate: 360 }}
+                              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                            /> 
+                            Signing In...
+                          </span> : 
+                          "Sign In"
+                        }
+                      </motion.button>
+                    </motion.div>
                   </form>
                 </Form>
               )}
             </CardContent>
             <CardFooter>
-              <Button
-                variant="link"
-                className="w-full"
+              <motion.button
+                variants={buttonVariants}
+                initial="idle"
+                whileHover="hover"
+                whileTap="tap"
+                className="w-full backdrop-blur-sm bg-white/5 border border-white/10 text-white py-2 px-4 rounded-md font-medium transition-all hover:bg-white/10"
                 onClick={() => setIsRegistering(!isRegistering)}
               >
                 {isRegistering
-                  ? "Already have an account? Sign in"
-                  : "Don't have an account? Sign up"}
-              </Button>
+                  ? "Already have an account? Sign In"
+                  : "Don't have an account? Sign Up"}
+              </motion.button>
             </CardFooter>
           </Card>
-        </div>
-
-        {/* Hero Section */}
-        <div className="hidden md:flex flex-col justify-center">
-          <div className="space-y-4">
-            <div className="flex items-center justify-center">
-              <CheckSquareIcon className="h-16 w-16 text-primary" />
+        </motion.div>
+        
+        {/* Info Section */}
+        <motion.div 
+          variants={itemVariants}
+          className="hidden md:flex flex-col justify-center"
+        >
+          <div className="space-y-6 text-white">
+            <motion.h2 
+              className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-300 to-fuchsia-300"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 0.8 }}
+            >
+              Manage Your Tasks Effectively
+            </motion.h2>
+            <motion.p 
+              className="text-gray-300"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.7 }}
+            >
+              TaskFlow helps you organize, track, and complete your tasks efficiently.
+            </motion.p>
+            
+            <div className="space-y-4">
+              <motion.div 
+                className="flex items-start space-x-4 bg-white/5 backdrop-blur-sm p-4 rounded-lg border border-white/10 hover:bg-white/10 transition-all"
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.9 }}
+                whileHover={{ scale: 1.02 }}
+              >
+                <CheckSquareIcon className="h-6 w-6 text-blue-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <h3 className="font-medium text-white">Task Assignment</h3>
+                  <p className="text-sm text-gray-300">
+                    Assign tasks to team members and track progress
+                  </p>
+                </div>
+              </motion.div>
+              
+              <motion.div 
+                className="flex items-start space-x-4 bg-white/5 backdrop-blur-sm p-4 rounded-lg border border-white/10 hover:bg-white/10 transition-all"
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 1.1 }}
+                whileHover={{ scale: 1.02 }}
+              >
+                <CheckSquareIcon className="h-6 w-6 text-fuchsia-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <h3 className="font-medium text-white">Due Date Tracking</h3>
+                  <p className="text-sm text-gray-300">
+                    Set due dates and get reminders for important tasks
+                  </p>
+                </div>
+              </motion.div>
+              
+              <motion.div 
+                className="flex items-start space-x-4 bg-white/5 backdrop-blur-sm p-4 rounded-lg border border-white/10 hover:bg-white/10 transition-all"
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 1.3 }}
+                whileHover={{ scale: 1.02 }}
+              >
+                <CheckSquareIcon className="h-6 w-6 text-purple-400 mt-0.5 flex-shrink-0" />
+                <div>
+                  <h3 className="font-medium text-white">Progress Monitoring</h3>
+                  <p className="text-sm text-gray-300">
+                    Track task completion and team performance
+                  </p>
+                </div>
+              </motion.div>
             </div>
-            <h1 className="text-3xl font-bold text-center">TaskFlow</h1>
-            <p className="text-xl text-center text-gray-600 dark:text-gray-400">
-              Simplify your workflow with our intuitive task management system
-            </p>
-            <ul className="space-y-2">
-              <li className="flex items-center">
-                <CheckSquareIcon className="h-5 w-5 text-primary mr-2" />
-                <span>Create and assign tasks to team members</span>
-              </li>
-              <li className="flex items-center">
-                <CheckSquareIcon className="h-5 w-5 text-primary mr-2" />
-                <span>Track task status and set priorities</span>
-              </li>
-              <li className="flex items-center">
-                <CheckSquareIcon className="h-5 w-5 text-primary mr-2" />
-                <span>Get notified when tasks are assigned to you</span>
-              </li>
-              <li className="flex items-center">
-                <CheckSquareIcon className="h-5 w-5 text-primary mr-2" />
-                <span>Visualize your tasks with customizable views</span>
-              </li>
-            </ul>
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
     </div>
   );
 }

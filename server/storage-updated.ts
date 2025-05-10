@@ -6,7 +6,7 @@ import {
   type AuditLog, type InsertAuditLog,
   type TaskMoodReaction, type InsertTaskMoodReaction,
   AuditAction, AuditEntity, UserRole, RecurringPattern, TaskStatus, NotificationChannel, TaskColor, TaskMoodType
-} from "@shared/schema";
+} from "../shared/schema";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import connectPg from "connect-pg-simple";
@@ -66,6 +66,14 @@ export type TaskFilters = {
   assignedToId?: number;
   createdById?: number;
 };
+
+// Helper function to ensure a string is a valid TaskColor
+function ensureValidTaskColor(color: string | null | undefined): TaskColor {
+  if (!color) return TaskColor.DEFAULT;
+  return Object.values(TaskColor).includes(color as TaskColor) 
+    ? color as TaskColor 
+    : TaskColor.DEFAULT;
+}
 
 export class MemStorage implements IStorage {
   private users: Map<number, User>;
@@ -433,7 +441,7 @@ export class MemStorage implements IStorage {
         isRecurring: false, // Child tasks are not recurring themselves
         recurringPattern: RecurringPattern.NONE,
         parentTaskId: task.id,
-        colorCode: task.colorCode || TaskColor.DEFAULT
+        colorCode: ensureValidTaskColor(task.colorCode)
       };
       
       const newTask = await this.createTask(newTaskData);
@@ -735,7 +743,7 @@ export class DatabaseStorage implements IStorage {
         isRecurring: false, // Child tasks are not recurring themselves
         recurringPattern: RecurringPattern.NONE,
         parentTaskId: task.id,
-        colorCode: task.colorCode || TaskColor.DEFAULT
+        colorCode: ensureValidTaskColor(task.colorCode)
       };
       
       const newTask = await this.createTask(newTaskData);

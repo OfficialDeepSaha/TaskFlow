@@ -26,9 +26,11 @@ interface TaskTableProps {
   users: User[];
   onEdit: (task: Task) => void;
   onDelete: (taskId: number) => void;
+  isUserRole?: boolean; // New prop to determine if user has regular user role
+  onStatusChange?: (taskId: number, newStatus: string) => void; // For changing task status
 }
 
-export function TaskTable({ tasks, users, onEdit, onDelete }: TaskTableProps) {
+export function TaskTable({ tasks, users, onEdit, onDelete, isUserRole = false, onStatusChange }: TaskTableProps) {
   const getUserById = (userId: number | null | undefined) => {
     if (!userId) return null;
     return users.find((user) => user.id === userId);
@@ -108,12 +110,26 @@ export function TaskTable({ tasks, users, onEdit, onDelete }: TaskTableProps) {
                     </span>
                   </TableCell>
                   <TableCell className="text-right space-x-2">
-                    <Button variant="ghost" size="icon" onClick={() => onEdit(task)}>
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => onDelete(task.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {isUserRole ? (
+                      <select
+                        className="rounded-md border border-gray-300 dark:border-gray-600 px-2 py-1 text-sm"
+                        value={task.status}
+                        onChange={(e) => onStatusChange?.(task.id, e.target.value)}
+                      >
+                        <option value="not_started">Not Started</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                    ) : (
+                      <>
+                        <Button variant="ghost" size="icon" onClick={() => onEdit(task)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => onDelete(task.id)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
                   </TableCell>
                 </TableRow>
               );

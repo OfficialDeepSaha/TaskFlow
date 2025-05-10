@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Task, User } from "@shared/schema";
 import { Navbar } from "@/components/navbar";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,18 +36,51 @@ export default function AssignedTasksPage() {
     dueDate?: string;
   }>({});
   const { toast } = useToast();
+  const { isAuthenticated, user, setConnectSidCookie } = useAuth();
 
-  // Fetch tasks assigned to current user
-  const { data: tasks = [], isLoading } = useQuery<Task[]>({
+  // Fix potential authentication issues by ensuring cookies are set
+  useEffect(() => {
+    // Check for existing connect.sid cookie
+    const cookies = document.cookie.split(';');
+    const sidCookie = cookies.find(cookie => cookie.trim().startsWith('connect.sid='));
+    
+    // If user is authenticated but cookie missing, try to manually set it
+    if (isAuthenticated && user && !sidCookie) {
+      console.log("User authenticated but session cookie missing, attempting to set it manually");
+      // Check URL for session ID
+      tryGetSessionFromUrl();
+    }
+  }, [isAuthenticated, user, setConnectSidCookie]);
+
+  // Function to handle getting session ID from URL
+  const tryGetSessionFromUrl = () => {
+    // For testing: Try to get connect.sid from URL parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const sid = urlParams.get('sid');
+    if (sid) {
+      console.log("Found session ID in URL, setting cookie");
+      setConnectSidCookie(sid);
+      // Remove the sid parameter from URL for security
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete('sid');
+      window.history.replaceState({}, document.title, newUrl.toString());
+      // Reload page to apply cookie
+      window.location.reload();
+    }
+  };
+
+  // Fetch tasks assigned to current user; coerce null to empty array
+  const { data: tasksData, isLoading } = useQuery<Task[]>({
     queryKey: ["/api/tasks/assigned/me"],
   });
+  const tasks = tasksData || []; // Ensure we always have an array even if data is null or undefined
 
   // Fetch users for assignment
   const { data: users = [] } = useQuery<User[]>({
     queryKey: ["/api/users"],
   });
 
-  // Delete task mutation
+  // Delete task mutation (not used for regular users but keep it for code compatibility)
   const deleteTaskMutation = useMutation({
     mutationFn: async (taskId: number) => {
       await apiRequest("DELETE", `/api/tasks/${taskId}`);
@@ -67,6 +101,28 @@ export default function AssignedTasksPage() {
       });
     },
   });
+  
+  // Update task status mutation for regular users
+  const updateTaskStatusMutation = useMutation({
+    mutationFn: async ({ taskId, status }: { taskId: number; status: string }) => {
+      await apiRequest("PATCH", `/api/tasks/${taskId}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks/assigned/me"] });
+      toast({
+        title: "Success",
+        description: "Task status updated successfully",
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: `Failed to update task status: ${error.message}`,
+        variant: "destructive",
+      });
+    },
+  });
 
   // Handle editing a task
   const handleEditTask = (task: Task) => {
@@ -77,6 +133,11 @@ export default function AssignedTasksPage() {
   // Handle deleting a task
   const handleDeleteTask = (taskId: number) => {
     setTaskToDelete(taskId);
+  };
+  
+  // Handle changing a task status
+  const handleStatusChange = (taskId: number, newStatus: string) => {
+    updateTaskStatusMutation.mutate({ taskId, status: newStatus });
   };
 
   // Confirm delete task
@@ -204,6 +265,8 @@ export default function AssignedTasksPage() {
                   users={users}
                   onEdit={handleEditTask}
                   onDelete={handleDeleteTask}
+                  isUserRole={true}  /* Show only status change options for regular users */
+                  onStatusChange={handleStatusChange}
                 />
               )}
             </CardContent>
