@@ -9,7 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
 import { CheckSquareIcon, LogInIcon, UserPlusIcon, LockIcon, AtSignIcon, UserIcon } from "lucide-react";
-import { apiRequest, queryClient, normalizeApiUrl } from "@/lib/queryClient";
+import { apiRequest, queryClient, normalizeApiUrl, clearSessionCookie } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import {
@@ -54,6 +54,12 @@ export default function AuthPage() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  
+  // Clear any existing session cookies when auth page loads
+  useEffect(() => {
+    clearSessionCookie();
+    console.log('Session cookies cleared on auth page load');
+  }, []);
   
   // Login form
   const loginForm = useForm<LoginData>({
