@@ -118,42 +118,8 @@ function App() {
   const authContext = authContextDirect;
   const { user, isLoading } = authContext;
   
-  // Get current location to check if we're at the home route
-  const [location] = useLocation();
-  const isHomeRoute = location === "/";
-  
-  // Special cases: 
-  // 1. Always show the landing page for the root route regardless of auth status
-  // 2. Always show the auth page for the auth route
-  if (isHomeRoute) {
-    return (
-      <ErrorBoundary fallback={
-        <TooltipProvider>
-          <Toaster />
-          <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background to-background/90">
-            <div className="text-center max-w-md p-6">
-              <h1 className="text-2xl font-bold mb-4">Welcome to TaskFlow</h1>
-              <p className="mb-6">The modern platform for team collaboration and task management.</p>
-              <button 
-                onClick={() => window.location.href = "/auth"}
-                className="px-6 py-2 rounded-full bg-gradient-to-r from-purple-600 via-violet-500 to-indigo-600 text-white"
-              >
-                Get Started
-              </button>
-            </div>
-          </div>
-        </TooltipProvider>
-      }>
-        <TooltipProvider>
-          <Toaster />
-          <HomePage />
-        </TooltipProvider>
-      </ErrorBoundary>
-    );
-  }
-  
-  // For all other routes (not home and not auth), redirect to auth if not authenticated
-  if (!user && !isLoading && !isAuthPage) {
+  // If not authenticated, redirect to auth page
+  if (!user && !isLoading) {
     return (
       <TooltipProvider>
         <Toaster />
@@ -172,7 +138,7 @@ function App() {
         <Toaster />
         <Switch>
           <Route path="/auth" component={AuthPage} />
-          {/* Root route is now handled above directly */}
+          <Route path="/" component={HomePage} />
           <Route path="/dashboard" component={DashboardPage} />
           <Route path="/tasks" component={TasksPage} />
           <Route path="/assigned" component={AssignedTasksPage} />
