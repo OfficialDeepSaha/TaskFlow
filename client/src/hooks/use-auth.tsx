@@ -10,7 +10,7 @@ import { queryClient } from "../lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import axios from "axios";
-import { apiRequest, setSessionCookie } from "@/lib/queryClient";
+import { apiRequest, setSessionCookie, clearSessionCookie } from "@/lib/queryClient";
 import { connectWebSocket, disconnectWebSocket } from "@/lib/websocket";
 
 type AuthContextType = {
@@ -338,6 +338,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Disconnect WebSocket
       disconnectWebSocket();
+      
+      // Clear session cookies
+      clearSessionCookie();
       
       // Clear auth state
       queryClient.setQueryData(["/api/user"], null);

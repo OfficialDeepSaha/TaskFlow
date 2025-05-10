@@ -15,6 +15,21 @@ export function setSessionCookie(sessionId: string) {
   }
 }
 
+// Clear the session cookie and remove from localStorage (for logout)
+export function clearSessionCookie() {
+  // Set cookie expiration to past date to remove it
+  document.cookie = 'connect.sid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+  console.log('Session cookie cleared: connect.sid');
+  
+  // Remove backup from localStorage
+  try {
+    localStorage.removeItem('connect.sid.backup');
+    console.log('Session backup removed from localStorage');
+  } catch (e) {
+    console.error('Could not remove session backup from localStorage', e);
+  }
+}
+
 // Get the connect.sid cookie value if it exists
 export function getSessionCookie(): string | null {
   // First try to get from cookies
