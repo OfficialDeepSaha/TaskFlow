@@ -111,15 +111,9 @@ export function TaskTable({ tasks, users, onEdit, onDelete, isUserRole = false, 
                   </TableCell>
                   <TableCell className="text-right space-x-2">
                     {isUserRole ? (
-                      <select
-                        className="rounded-md border border-gray-300 dark:border-gray-600 px-2 py-1 text-sm"
-                        value={task.status}
-                        onChange={(e) => onStatusChange?.(task.id, e.target.value)}
-                      >
-                        <option value="not_started">Not Started</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="completed">Completed</option>
-                      </select>
+                      <Button variant="ghost" size="icon" onClick={() => onEdit(task)}>
+                        <Edit className="h-4 w-4" />
+                      </Button>
                     ) : (
                       <>
                         <Button variant="ghost" size="icon" onClick={() => onEdit(task)}>

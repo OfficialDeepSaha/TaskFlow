@@ -265,7 +265,7 @@ export default function AssignedTasksPage() {
                   users={users}
                   onEdit={handleEditTask}
                   onDelete={handleDeleteTask}
-                  isUserRole={true}  /* Show only status change options for regular users */
+                  isUserRole={true}  /* Show edit button for regular users */
                   onStatusChange={handleStatusChange}
                 />
               )}
