@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Task, User } from "@shared/schema";
 import { Navbar } from "@/components/navbar";
@@ -42,6 +43,7 @@ export default function OverdueTasksPage({ inDashboard = false }: OverdueTasksPa
     dueDate?: string;
   }>({});
   const { toast } = useToast();
+  const { user } = useAuth();
 
   // Fetch overdue tasks
   const { data: tasks = [], isLoading } = useQuery<Task[]>({
@@ -158,12 +160,14 @@ export default function OverdueTasksPage({ inDashboard = false }: OverdueTasksPa
                   </form>
                 </div>
                 <TaskFilter onFilterChange={setFilterParams} />
-                <Button onClick={() => {
-                  setEditTask(undefined);
-                  setIsTaskFormOpen(true);
-                }}>
-                  <Plus size={16} className="mr-2" /> New Task
-                </Button>
+                {user?.role === "admin" && (
+                  <Button onClick={() => {
+                    setEditTask(undefined);
+                    setIsTaskFormOpen(true);
+                  }}>
+                    <Plus size={16} className="mr-2" /> New Task
+                  </Button>
+                )}
               </div>
             </div>
           </CardHeader>

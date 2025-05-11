@@ -8,10 +8,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2 } from "lucide-react";
+import { Edit, Trash2, CheckCircle, MoreHorizontal, Clock, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Task, User } from "@shared/schema";
+import { Task, User, TaskStatus } from "@shared/schema";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   formatDate,
   formatStatus,
@@ -111,10 +119,38 @@ export function TaskTable({ tasks, users, onEdit, onDelete, isUserRole = false, 
                   </TableCell>
                   <TableCell className="text-right space-x-2">
                     {isUserRole ? (
-                      <Button variant="ghost" size="icon" onClick={() => onEdit(task)}>
-                        <Edit className="h-4 w-4" />
-                      </Button>
+                      // Status change dropdown for regular users
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 border-dashed border">
+                            <span>Change Status</span>
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Change Status</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            disabled={task.status === TaskStatus.NOT_STARTED}
+                            onClick={() => onStatusChange && onStatusChange(task.id, TaskStatus.NOT_STARTED)}
+                          >
+                            <XCircle className="mr-2 h-4 w-4 text-gray-500" /> Not Started
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            disabled={task.status === TaskStatus.IN_PROGRESS}
+                            onClick={() => onStatusChange && onStatusChange(task.id, TaskStatus.IN_PROGRESS)}
+                          >
+                            <Clock className="mr-2 h-4 w-4 text-blue-500" /> In Progress
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            disabled={task.status === TaskStatus.COMPLETED}
+                            onClick={() => onStatusChange && onStatusChange(task.id, TaskStatus.COMPLETED)}
+                          >
+                            <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Completed
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     ) : (
+                      // Admin actions
                       <>
                         <Button variant="ghost" size="icon" onClick={() => onEdit(task)}>
                           <Edit className="h-4 w-4" />

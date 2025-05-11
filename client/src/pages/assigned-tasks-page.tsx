@@ -240,13 +240,15 @@ export default function AssignedTasksPage({ inDashboard = false }: AssignedTasks
                   </form>
                 </div>
                 <TaskFilter onFilterChange={setFilterParams} />
-                <Button onClick={() => {
-                  setEditTask(undefined);
-                  setIsTaskFormOpen(true);
-                }}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Task
-                </Button>
+                {user?.role === "admin" && (
+                  <Button onClick={() => {
+                    setEditTask(undefined);
+                    setIsTaskFormOpen(true);
+                  }}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Task
+                  </Button>
+                )}
               </div>
             </div>
           </CardHeader>

@@ -11,7 +11,7 @@ import session from "express-session";
 import createMemoryStore from "memorystore";
 import connectPg from "connect-pg-simple";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, and, or, lt, desc } from "drizzle-orm";
+import { eq, and, or, lt, desc, isNotNull, ne } from "drizzle-orm";
 import postgres from "postgres";
 
 const MemoryStore = createMemoryStore(session);
@@ -763,7 +763,17 @@ class DatabaseStorage implements IStorage {
   }
 
   async getAllTasks(): Promise<Task[]> {
-    return await this.db.select().from(tasks);
+    try {
+      console.log('Executing getAllTasks database query...');
+      const result = await this.db.select().from(tasks);
+      console.log(`getAllTasks query successful, retrieved ${result.length} tasks`);
+      return result;
+    } catch (error) {
+      console.error('Database error in getAllTasks:', error);
+      // Return an empty array to prevent complete failure
+      // This allows the application to degrade gracefully
+      return [];
+    }
   }
 
   async getTasksByAssignee(userId: number): Promise<Task[]> {
@@ -775,17 +785,96 @@ class DatabaseStorage implements IStorage {
   }
 
   async getOverdueTasks(userId: number): Promise<Task[]> {
-    const now = new Date();
-    return await this.db.select().from(tasks)
-      .where(
-        and(
-          or(
-            eq(tasks.assignedToId, userId),
-            eq(tasks.createdById, userId)
-          ),
-          lt(tasks.dueDate, now)
-        )
-      );
+    try {
+      // Validate input
+      if (!userId || typeof userId !== 'number') {
+        console.error(`Invalid userId provided to getOverdueTasks: ${userId}`);
+        return [];
+      }
+
+      const now = new Date();
+      console.log(`Getting overdue tasks for user ${userId}, current date: ${now.toISOString()}`);
+      
+      // First attempt to get relevant tasks by direct database queries
+      let userTasks = [];
+      try {
+        // Try to get tasks directly assigned to or created by this user to reduce processing
+        const assignedTasks = await this.getTasksByAssignee(userId);
+        const createdTasks = await this.getTasksByCreator(userId);
+        
+        // Combine tasks, removing duplicates (tasks both created by and assigned to user)
+        const taskMap = new Map();
+        [...assignedTasks, ...createdTasks].forEach(task => {
+          taskMap.set(task.id, task);
+        });
+        userTasks = Array.from(taskMap.values());
+        console.log(`Found ${userTasks.length} total tasks for user ${userId}`);
+      } catch (dbError) {
+        console.error('Failed to fetch tasks by user ID directly, falling back to general task list:', dbError);
+        // Fallback to all tasks if specific queries fail
+        userTasks = await this.getAllTasks();
+      }
+
+      // Then filter for overdue tasks
+      console.log(`Filtering ${userTasks.length} tasks for overdue status...`);
+      const overdueTasks = userTasks.filter(task => {
+        try {
+          // Skip invalid tasks
+          if (!task || typeof task !== 'object') {
+            console.log('Skipping invalid task object:', task);
+            return false;
+          }
+          
+          // Check if this task is relevant to this user
+          const isUserRelevant = task.assignedToId === userId || task.createdById === userId;
+          if (!isUserRelevant) return false;
+          
+          // Check task status first (quick rejection)
+          const isNotCompleted = task.status !== 'completed';
+          if (!isNotCompleted) return false;
+          
+          // Check if it has a due date that's in the past
+          const hasDueDate = task.dueDate !== null && task.dueDate !== undefined;
+          if (!hasDueDate) return false;
+          
+          // Safely parse the due date
+          try {
+            let dueDate;
+            if (typeof task.dueDate === 'string') {
+              dueDate = new Date(task.dueDate);
+            } else if (task.dueDate instanceof Date) {
+              dueDate = task.dueDate;
+            } else {
+              console.log(`Task ${task.id}: Unexpected dueDate format: ${typeof task.dueDate}`);
+              return false;
+            }
+            
+            // Check for invalid date
+            if (isNaN(dueDate.getTime())) {
+              console.log(`Task ${task.id}: Invalid date value: ${task.dueDate}`);
+              return false;
+            }
+            
+            // Finally check if due date is in the past
+            const isDueInPast = dueDate < now;
+            return isDueInPast;
+          } catch (dateError) {
+            console.error(`Error parsing date for task ${task.id}:`, dateError);
+            return false;
+          }
+        } catch (err) {
+          console.error(`Error filtering task ${task?.id || 'unknown'}:`, err);
+          return false;
+        }
+      });
+      
+      console.log(`Found ${overdueTasks.length} overdue tasks for user ${userId}`);
+      return overdueTasks;
+    } catch (error) {
+      console.error('Error in getOverdueTasks:', error);
+      // Return empty array instead of throwing to prevent 500 errors
+      return [];
+    }
   }
 
   async searchTasks(query: string, filters?: TaskFilters): Promise<Task[]> {

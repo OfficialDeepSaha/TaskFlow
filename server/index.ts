@@ -1,15 +1,52 @@
-import 'dotenv/config';
+// Enhanced environment variable loading for both development and production
+import { config } from 'dotenv';
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./fixed_routes";
+import { registerAnalyticsRoutes } from "./analyticsRoutes";
 import { setupVite, serveStatic, log } from "./vite";
 import cors from "cors";
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import net from 'net';  // Import the net module properly for ES modules
 
-// Get dirname equivalent for ES modules
+// Load environment variables from .env files
+// First try to load from the current directory (for production)
+// Then from the server directory (for development)
+const currentDir = process.cwd();
+const currentEnvPath = path.resolve(currentDir, '.env');
+
+if (fs.existsSync(currentEnvPath)) {
+  console.log(`Loading environment variables from ${currentEnvPath}`);
+  config({ path: currentEnvPath });
+} else {
+  // For ESM compatibility get the __dirname equivalent
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const serverEnvPath = path.resolve(__dirname, '.env');
+  
+  if (fs.existsSync(serverEnvPath)) {
+    console.log(`Loading environment variables from ${serverEnvPath}`);
+    config({ path: serverEnvPath });
+  } else {
+    console.warn('No .env file found! Application may not function correctly.');
+  }
+}
+
+// Log database URL for troubleshooting (redacted for security)
+if (process.env.DATABASE_URL) {
+  const redactedUrl = process.env.DATABASE_URL.replace(/(:[^:@]+)@/, ':******@');
+  console.log(`DATABASE_URL is set: ${redactedUrl}`);
+} else {
+  console.error('DATABASE_URL environment variable is missing!');
+}
+
+// Define __dirname for ES modules context globally
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Log dirname for debugging
+console.log('ESM __dirname equivalent:', __dirname);
 
 const app = express();
 
@@ -97,6 +134,40 @@ apiRouter.use((req, res, next) => {
   next();
 });
 
+// Function to find an available port
+const findAvailablePort = (preferredPort: number, maxAttempts = 10): Promise<number> => {
+  return new Promise((resolve, reject) => {
+    // Try the preferred port first
+    const server = net.createServer();
+    
+    // Handler for errors (usually EADDRINUSE)
+    const onError = (err: any) => {
+      server.close();
+      
+      // If port is in use, try the next port
+      if (err.code === 'EADDRINUSE' && maxAttempts > 0) {
+        console.log(`Port ${preferredPort} is in use, trying ${preferredPort + 1}...`);
+        findAvailablePort(preferredPort + 1, maxAttempts - 1)
+          .then(resolve)
+          .catch(reject);
+      } else {
+        reject(err);
+      }
+    };
+    
+    // Handler for successful listening
+    const onListening = () => {
+      server.close();
+      resolve(preferredPort);
+    };
+    
+    server.once('error', onError);
+    server.once('listening', onListening);
+    
+    server.listen(preferredPort);
+  });
+};
+
 // Start the application
 (async () => {
   try {
@@ -106,6 +177,9 @@ apiRouter.use((req, res, next) => {
 
     // Mount API router at /api after auth and sessions are set up
     app.use('/api', apiRouter);
+    
+    // Register analytics routes after auth is set up
+    registerAnalyticsRoutes(app);
     
     // Direct routes for common problematic endpoints
     app.get('/users', (req, res) => {
@@ -133,6 +207,11 @@ apiRouter.use((req, res, next) => {
     app.get('/tasks', (req, res) => {
       console.log('Redirecting direct /tasks access to /api/tasks');
       res.redirect(307, '/api/tasks');
+    });
+    
+    app.get('/tasks/overdue', (req, res) => {
+      console.log('Redirecting direct /tasks/overdue access to /api/tasks/overdue');
+      res.redirect(307, '/api/tasks/overdue');
     });
 
     // API error handler
@@ -259,12 +338,15 @@ apiRouter.use((req, res, next) => {
       // For dev: server/index.ts -> ../dist/public/index.html
       // For prod: dist/index.js -> ./public/index.html
       let indexPath;
-      if (__dirname.includes('dist')) {
-        // Production build
+      // Check if we're running from the dist directory (production) or source (development)
+if (__dirname.includes('dist')) {
+        // Production build - serve from ./public/index.html relative to dist folder
         indexPath = path.resolve(__dirname, './public/index.html');
+        console.log('Production path:', indexPath);
       } else {
-        // Development
+        // Development - serve from ../dist/public/index.html relative to server folder
         indexPath = path.resolve(__dirname, '../dist/public/index.html');
+        console.log('Development path:', indexPath);
       }
       
       console.log('Serving SPA fallback from:', indexPath, 'for path:', req.path);
@@ -281,11 +363,20 @@ apiRouter.use((req, res, next) => {
       res.sendFile(indexPath);
     });
 
-    // Start the server
-    const port = process.env.PORT || 5000;
-    server.listen({ host: "0.0.0.0", port }, () => {
-      log(`Server running on port ${port}`);
-    });
+    // Find an available port, starting with preferred port
+    const preferredPort = process.env.PORT ? parseInt(process.env.PORT, 10) : 5000;
+    try {
+      const availablePort = await findAvailablePort(preferredPort);
+      
+      // Set up the HTTP server to listen on the available port
+      server.listen(availablePort, () => {
+        console.log(`[server] Server running on port ${availablePort}`);
+        console.log(`[server] Access the application at http://localhost:${availablePort}`);
+      });
+    } catch (portError) {
+      console.error('Failed to find an available port:', portError);
+      process.exit(1);
+    }
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);

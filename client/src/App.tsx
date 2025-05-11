@@ -196,9 +196,9 @@ function App() {
   }
   
   // If authenticated, render the appropriate page
-  // Only show quick task button when user is logged in
-  const showQuickTaskButton = !!user;
-  const isAdmin = user?.role === "admin";
+  // Only show quick task button when user is admin
+  const showQuickTaskButton = !!user && user.role && user.role.toString() === "admin";
+  const isAdmin = user?.role && user.role.toString() === "admin";
   
   return (
     <ErrorBoundary>
@@ -235,14 +235,14 @@ function App() {
                     </Route>
                     
                     {/* Admin Routes - only accessible to admins */}
-                    {isAdmin && (
+                    {/* {isAdmin && (
                       <>
                         <Route path="/admin/analytics" component={DashboardPage} />
                         <Route path="/admin/team" component={DashboardPage} />
                         <Route path="/admin/reports" component={DashboardPage} />
                         <Route path="/admin/settings" component={DashboardPage} />
                       </>
-                    )}
+                    )} */}
                     
                     {/* Settings Routes */}
                     <Route path="/profile" component={DashboardPage} />

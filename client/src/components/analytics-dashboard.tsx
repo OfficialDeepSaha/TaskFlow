@@ -457,57 +457,7 @@ export function AnalyticsDashboard() {
           </CardContent>
         </Card>
         
-        {/* Recent Activities */}
-        <Card className="hover:shadow-md transition-all duration-200 border-muted">
-          <CardHeader className="pb-2">
-            <CardTitle>Recent Activities</CardTitle>
-            <CardDescription>Latest system activity</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {isLoading ? (
-                <div className="flex items-center justify-center h-[180px]">
-                  <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary/30 border-t-primary"></div>
-                </div>
-              ) : (
-                <>
-                  <div className="flex">
-                    <div className="p-2 rounded-full bg-green-50 dark:bg-green-900/20 mr-3 h-10 w-10 flex items-center justify-center">
-                      <Zap className="h-4 w-4 text-green-600 dark:text-green-400" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium">New task created</div>
-                      <div className="text-xs text-muted-foreground">Backend API Integration by Jane</div>
-                      <div className="text-xs text-muted-foreground">10 minutes ago</div>
-                    </div>
-                  </div>
-                  <Separator />
-                  <div className="flex">
-                    <div className="p-2 rounded-full bg-purple-50 dark:bg-purple-900/20 mr-3 h-10 w-10 flex items-center justify-center">
-                      <Users className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium">User added to project</div>
-                      <div className="text-xs text-muted-foreground">Robert added to Frontend Redesign</div>
-                      <div className="text-xs text-muted-foreground">1 hour ago</div>
-                    </div>
-                  </div>
-                  <Separator />
-                  <div className="flex">
-                    <div className="p-2 rounded-full bg-blue-50 dark:bg-blue-900/20 mr-3 h-10 w-10 flex items-center justify-center">
-                      <Activity className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-medium">Project status updated</div>
-                      <div className="text-xs text-muted-foreground">Mobile App changed to In Progress</div>
-                      <div className="text-xs text-muted-foreground">3 hours ago</div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+       
       </div>
     </div>
   );

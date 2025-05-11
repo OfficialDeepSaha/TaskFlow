@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { NotificationCenter } from "@/components/notification-center";
+import { RecentActivities } from "@/components/recent-activities";
 import { RecurringTasksPanel } from "@/components/recurring-tasks-panel";
+import { TaskCompletionChart } from "@/components/task-completion-chart";
 import { AuditLogsPanel } from "@/components/audit-logs-panel";
 import { AnalyticsDashboard } from "@/components/analytics-dashboard";
 import { NotificationPreferences } from "@/components/notification-preferences";
@@ -78,7 +81,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useLocation } from "wouter";
 import { apiRequest, normalizeApiUrl } from "@/lib/queryClient";
-import { Task, TaskStatus } from "../../../shared/schema";
+import { Task, TaskStatus, RecurringPattern } from "../../../shared/schema";
 import { UserRole } from "../../../shared/schema";
 import { 
   Popover,
@@ -128,6 +131,18 @@ export default function DashboardPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [isAlertOpen, setIsAlertOpen] = useState(false);
+  const handleOpenNewTaskDialog = () => {
+    // Make sure users are loaded before opening dialog
+    if (users.length === 0) {
+      loadUsers().then(() => {
+        console.log('Users loaded for task dialog:', users);
+        setIsNewTaskDialogOpen(true);
+      });
+    } else {
+      console.log('Using existing users for task dialog:', users);
+      setIsNewTaskDialogOpen(true);
+    }
+  };
   const [isNewTaskDialogOpen, setIsNewTaskDialogOpen] = useState(false);
   const [isTaskDetailOpen, setIsTaskDetailOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -148,7 +163,10 @@ export default function DashboardPage() {
     priority: 'medium',
     status: 'not_started' as TaskStatus,
     dueDate: null as Date | null,
-    assignedToId: null as number | null
+    assignedToId: null as number | null,
+    isRecurring: false,
+    recurringPattern: 'none' as RecurringPattern,
+    recurringEndDate: null as Date | null
   });
   
   // Role-based UI: regular users see assigned tasks page without duplicate layout
@@ -175,14 +193,17 @@ export default function DashboardPage() {
             </div>
             
             <div className="flex items-center gap-2">
-              <Button 
-                variant="outline" 
-                className="flex items-center gap-2 border-dashed"
-                onClick={() => setIsNewTaskDialogOpen(true)}
-              >
-                <Plus className="h-4 w-4" />
-                <span>New Task</span>
-              </Button>
+              {/* Only show New Task button for admin users */}
+              {user && user.role && user.role.toString() === "admin" && (
+                <Button 
+                  variant="outline" 
+                  className="flex items-center gap-2 border-dashed"
+                  onClick={handleOpenNewTaskDialog}
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>New Task</span>
+                </Button>
+              )}
             </div>
           </motion.div>
         </div>
@@ -496,6 +517,8 @@ export default function DashboardPage() {
   async function createTask(e: React.FormEvent) {
     e.preventDefault();
     
+    console.log('Creating task with users:', users);
+    
     if (!user) {
       toast({
         title: "Authentication required",
@@ -531,7 +554,10 @@ export default function DashboardPage() {
         priority: 'medium',
         status: 'not_started' as TaskStatus,
         dueDate: null,
-        assignedToId: null // Will be converted to "current-user" in the UI
+        assignedToId: null, // Will be converted to "current-user" in the UI
+        isRecurring: false,
+        recurringPattern: 'none' as RecurringPattern,
+        recurringEndDate: null
       });
       setIsNewTaskDialogOpen(false);
       
@@ -713,14 +739,7 @@ export default function DashboardPage() {
           </div>
           
           <div className="flex items-center gap-2">
-            <Button 
-              variant="outline" 
-              className="flex items-center gap-2 border-dashed"
-              onClick={() => setIsNewTaskDialogOpen(true)}
-            >
-              <Plus className="h-4 w-4" />
-              <span>New Task</span>
-            </Button>
+           
             
             <Link href="/admin/reports">
               <Button variant="outline" className="flex items-center gap-2">
@@ -753,47 +772,7 @@ export default function DashboardPage() {
           </div>
         </motion.div>
 
-        {/* Dashboard Navigation Tabs */}
-        <Tabs 
-          value={activeTab} 
-          onValueChange={setActiveTab}
-          className="w-full"
-        >
-          <TabsList className="grid grid-cols-2 md:grid-cols-4 lg:w-[600px]">
-            <TabsTrigger 
-              value="overview" 
-              className="flex items-center gap-2"
-              onClick={() => navigate("/admin")}
-            >
-              <LayoutDashboard className="h-4 w-4" />
-              <span>Overview</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="analytics" 
-              className="flex items-center gap-2"
-              onClick={() => navigate("/admin/analytics")}
-            >
-              <BarChart3 className="h-4 w-4" />
-              <span>Analytics</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="team" 
-              className="flex items-center gap-2"
-              onClick={() => navigate("/admin/team")}
-            >
-              <Users className="h-4 w-4" />
-              <span>Team</span>
-            </TabsTrigger>
-            <TabsTrigger 
-              value="settings" 
-              className="flex items-center gap-2"
-              onClick={() => navigate("/admin/settings")}
-            >
-              <Gauge className="h-4 w-4" />
-              <span>Settings</span>
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+       
       </div>
 
       {/* Dashboard Overview Stats */}
@@ -905,6 +884,21 @@ export default function DashboardPage() {
         )}
       </AnimatePresence>
 
+      {/* Task Completion Rate Chart - Dynamic with Real-time Data */}
+      <AnimatePresence>
+        {activeTab === 'overview' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.5 }}
+            className="mt-6"
+          >
+            <TaskCompletionChart />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Admin Dashboard Overview Content */}
       <AnimatePresence>
         {activeTab === 'overview' && (
@@ -936,7 +930,7 @@ export default function DashboardPage() {
                         variant="default" 
                         size="sm" 
                         className="h-9"
-                        onClick={() => setIsNewTaskDialogOpen(true)}
+                        onClick={handleOpenNewTaskDialog}
                       >
                         <Plus className="h-4 w-4 mr-1" />
                         <span>Add Task</span>
@@ -1103,7 +1097,7 @@ export default function DashboardPage() {
                       <Button 
                         variant="link" 
                         className="mt-2"
-                        onClick={() => setIsNewTaskDialogOpen(true)}
+                        onClick={handleOpenNewTaskDialog}
                       >
                         Create your first task
                       </Button>
@@ -1123,10 +1117,7 @@ export default function DashboardPage() {
               
               {/* Analytics Summary */}
               <Card className="border-border/40">
-                <CardHeader>
-                  <CardTitle className="text-lg font-semibold">Task Completion Rate</CardTitle>
-                  <CardDescription>Weekly progress of task completion</CardDescription>
-                </CardHeader>
+                
                 <CardContent className="pl-2">
                   <div className="h-[200px] w-full">
                     <AnalyticsDashboard />
@@ -1143,13 +1134,8 @@ export default function DashboardPage() {
                   <CardDescription>Latest updates from your team</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ActivityTimeline activities={[]} />
+                  <RecentActivities />
                 </CardContent>
-                <CardFooter className="border-t py-3">
-                  <Button variant="link" size="sm" className="mx-auto">
-                    View All Activity
-                  </Button>
-                </CardFooter>
               </Card>
               
               <Card className="border-border/40">
@@ -1378,14 +1364,14 @@ export default function DashboardPage() {
                 <div className="grid gap-2">
                   <Label htmlFor="assignee">Assign To</Label>
                   <Select
-                    value={newTask.assignedToId?.toString() || ""}
-                    onValueChange={(value) => setNewTask({...newTask, assignedToId: value ? Number(value) : null})}
+                    value={newTask.assignedToId?.toString() || "unassigned"}
+                    onValueChange={(value) => setNewTask({...newTask, assignedToId: value === "unassigned" ? null : Number(value)})}
                   >
                     <SelectTrigger id="assignee">
                       <SelectValue placeholder="Select assignee" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Unassigned</SelectItem>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
                       {users.map(user => (
                         <SelectItem key={user.id} value={user.id.toString()}>
                           {user.name}
@@ -1394,6 +1380,64 @@ export default function DashboardPage() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+              
+              {/* Recurring Task Options */}
+              <div className="space-y-4 pt-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox 
+                    id="isRecurring" 
+                    checked={newTask.isRecurring}
+                    onCheckedChange={(checked: boolean | 'indeterminate') => setNewTask({...newTask, isRecurring: checked === true})}
+                  />
+                  <Label htmlFor="isRecurring" className="font-medium">Recurring Task</Label>
+                </div>
+                
+                {newTask.isRecurring && (
+                  <div className="grid grid-cols-2 gap-4 pl-6 pt-2">
+                    <div className="grid gap-2">
+                      <Label htmlFor="recurringPattern">Repeat Pattern</Label>
+                      <Select
+                        value={newTask.recurringPattern}
+                        onValueChange={(value) => setNewTask({...newTask, recurringPattern: value as RecurringPattern})}
+                      >
+                        <SelectTrigger id="recurringPattern">
+                          <SelectValue placeholder="Select pattern" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="daily">Daily</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    
+                    <div className="grid gap-2">
+                      <Label htmlFor="recurringEndDate">End Date (Optional)</Label>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className="w-full justify-start text-left font-normal"
+                            id="recurringEndDate"
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {newTask.recurringEndDate ? format(newTask.recurringEndDate, "PPP") : <span>No end date</span>}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0">
+                          <Calendar
+                            mode="single"
+                            selected={newTask.recurringEndDate || undefined}
+                            onSelect={(date) => setNewTask({...newTask, recurringEndDate: date || null})}
+                            initialFocus
+                            disabled={(date) => (newTask.dueDate ? date < newTask.dueDate : false)}
+                          />
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
             <DialogFooter>

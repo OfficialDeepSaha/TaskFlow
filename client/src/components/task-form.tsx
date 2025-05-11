@@ -518,9 +518,9 @@ export function TaskForm({ isOpen, onClose, editTask }: TaskFormProps) {
                           
                           {/* Show loading state if users are being loaded */}
                           {usersLoading && (
-                            <SelectItem value="loading" disabled>
+                            <div className="p-2 text-center text-xs text-muted-foreground">
                               Loading users...
-                            </SelectItem>
+                            </div>
                           )}
                         </SelectContent>
                       </Select>

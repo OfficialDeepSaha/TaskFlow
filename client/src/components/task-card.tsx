@@ -1,11 +1,19 @@
 import { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Task, User, TaskColor } from "@shared/schema";
+import { Task, User, TaskColor, TaskStatus } from "@shared/schema";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2, Smile, ChevronDown, ChevronUp, Clock, CalendarClock } from "lucide-react";
+import { Edit, Trash2, Smile, ChevronDown, ChevronUp, Clock, CalendarClock, CheckCircle, XCircle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { TaskMoodReactions } from "@/components/task-mood-reactions";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { 
   formatDate, 
   formatStatus, 
@@ -21,6 +29,8 @@ interface TaskCardProps {
   assignedUser?: User;
   onEdit: (task: Task) => void;
   onDelete: (taskId: number) => void;
+  isUserRole?: boolean; // Flag to determine if user has regular user role
+  onStatusChange?: (taskId: number, newStatus: string) => void; // For changing task status
 }
 
 // Task color code mapping
@@ -35,7 +45,7 @@ const colorCodeClasses: Record<TaskColor, string> = {
   pink: "border-l-pink-500 bg-gradient-to-r from-pink-50/50 to-transparent dark:from-pink-950/20"
 };
 
-export function TaskCard({ task, assignedUser, onEdit, onDelete }: TaskCardProps) {
+export function TaskCard({ task, assignedUser, onEdit, onDelete, isUserRole = false, onStatusChange }: TaskCardProps) {
   const isPastDue = task.dueDate && new Date(task.dueDate) < new Date();
   const [showMoodReactions, setShowMoodReactions] = useState(false);
   
@@ -90,33 +100,76 @@ export function TaskCard({ task, assignedUser, onEdit, onDelete }: TaskCardProps
                 <TooltipContent>Add reaction</TooltipContent>
               </Tooltip>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={() => onEdit(task)} 
-                    className="h-8 w-8 opacity-60 hover:opacity-100 transition-opacity hover:bg-accent"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Edit task</TooltipContent>
-              </Tooltip>
+              {isUserRole ? (
+                // Status change dropdown for regular users
+                <DropdownMenu>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuTrigger asChild>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-8 border-dashed border opacity-60 hover:opacity-100"
+                      >
+                        <span>Status</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                  </TooltipTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuLabel>Change Status</DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      disabled={task.status === TaskStatus.NOT_STARTED}
+                      onClick={() => onStatusChange && onStatusChange(task.id, TaskStatus.NOT_STARTED)}
+                    >
+                      <XCircle className="mr-2 h-4 w-4 text-gray-500" /> Not Started
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      disabled={task.status === TaskStatus.IN_PROGRESS}
+                      onClick={() => onStatusChange && onStatusChange(task.id, TaskStatus.IN_PROGRESS)}
+                    >
+                      <Clock className="mr-2 h-4 w-4 text-blue-500" /> In Progress
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      disabled={task.status === TaskStatus.COMPLETED}
+                      onClick={() => onStatusChange && onStatusChange(task.id, TaskStatus.COMPLETED)}
+                    >
+                      <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Completed
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                // Admin actions - Edit button
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => onEdit(task)} 
+                      className="h-8 w-8 opacity-60 hover:opacity-100 transition-opacity hover:bg-accent"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit task</TooltipContent>
+                </Tooltip>
+              )}
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={() => onDelete(task.id)} 
-                    className="h-8 w-8 opacity-60 hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Delete task</TooltipContent>
-              </Tooltip>
+              {!isUserRole && (
+                // Delete button only for admin users
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={() => onDelete(task.id)} 
+                      className="h-8 w-8 opacity-60 hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete task</TooltipContent>
+                </Tooltip>
+              )}
             </TooltipProvider>
           </div>
         </div>
