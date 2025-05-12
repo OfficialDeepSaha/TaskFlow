@@ -28,6 +28,47 @@ The application leverages a microservices architecture with React, Express, and 
 
 <br />
 
+## 🔐 Authentication
+
+The platform implements role-based access control with three distinct levels of permissions:
+
+<div align="center">
+  <table>
+    <tr>
+      <th>Role</th>
+      <th>Capabilities</th>
+      <th>Access Level</th>
+    </tr>
+    <tr>
+      <td><b>Admin</b></td>
+      <td>Complete system access, user management, analytics, all task operations</td>
+      <td>Full access</td>
+    </tr>
+    <tr>
+      <td><b>Manager</b></td>
+      <td>Team management, task assignment, reporting, analytics</td>
+      <td>Team-wide access</td>
+    </tr>
+    <tr>
+      <td><b>User</b></td>
+      <td>Task management, profile settings, assigned task operations</td>
+      <td>Self-focused access</td>
+    </tr>
+  </table>
+</div>
+
+### Quick Access Credentials
+
+For testing and demonstration purposes, use these credentials:
+
+```
+Admin Access:
+Email: deepsaha01896@gmail.com
+Password: 12345678
+```
+
+<br />
+
 ## 🛠️ Features
 
 <details open>
