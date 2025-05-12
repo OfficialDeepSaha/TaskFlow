@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TaskFlow - Offline</title>
+    <style>
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(to bottom right, #3b82f6, #6366f1);
+            color: white;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+        }
+        .offline-container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            max-width: 90%;
+            width: 500px;
+        }
+        h1 {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+        p {
+            font-size: 1.1rem;
+            margin-bottom: 1.5rem;
+            opacity: 0.9;
+        }
+        .icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+        }
+        button {
+            background-color: white;
+            color: #3b82f6;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+        .status {
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="offline-container">
+        <div class="icon">📶</div>
+        <h1>You're Offline</h1>
+        <p>You can still use TaskFlow to view and modify your tasks. Changes will sync once you're connected again.</p>
+        <button id="retry-button">Try to Reconnect</button>
+        <div class="status" id="status-message">Checking connection...</div>
+    </div>
+
+    <script>
+        // Check connection status periodically
+        function checkConnection() {
+            const statusMessage = document.getElementById('status-message');
+            const retryButton = document.getElementById('retry-button');
+            
+            if (navigator.onLine) {
+                statusMessage.textContent = 'Connected! Redirecting...';
+                setTimeout(() => {
+                    window.location.href = '/';
+                }, 1000);
+            } else {
+                statusMessage.textContent = 'Still offline. You can continue using the app with limited functionality.';
+            }
+        }
+        
+        // Event listeners
+        document.getElementById('retry-button').addEventListener('click', () => {
+            const statusMessage = document.getElementById('status-message');
+            statusMessage.textContent = 'Checking connection...';
+            checkConnection();
+        });
+        
+        // Check connection on page load
+        window.addEventListener('load', checkConnection);
+        
+        // Check connection when online status changes
+        window.addEventListener('online', checkConnection);
+    </script>
+</body>
+</html>

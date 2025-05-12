@@ -17,6 +17,7 @@ import OverdueTasksPage from "./pages/overdue-tasks-page";
 import AdminAnalyticsPage from "./pages/admin-analytics-page";
 import TeamMembersPage from "./pages/team-members-page";
 import { QuickTaskButton } from "./components/quick-task-button";
+import { OfflineBanner } from "./components/offline-banner";
 import { AuthContext } from "./hooks/use-auth";
 import { Sidebar } from "./components/sidebar";
 import { Navbar } from "./components/navbar";
@@ -110,6 +111,8 @@ function DashboardLayout({ children }: { children: ReactNode }) {
             {children}
           </div>
         </main>
+        {/* Offline status banner */}
+        <OfflineBanner />
       </div>
     </div>
   );
