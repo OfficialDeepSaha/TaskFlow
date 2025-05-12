@@ -53,6 +53,7 @@ export interface IStorage {
   searchTasks(query: string, filters?: TaskFilters): Promise<Task[]>;
   getRecurringTasks(): Promise<Task[]>;
   createRecurringTaskInstances(task: Task): Promise<Task[]>;
+  getAllOverdueTasks(): Promise<Task[]>; // Add method to get all overdue tasks regardless of user
   
   // Notification operations
   createNotification(notification: InsertNotification): Promise<Notification>;
@@ -313,6 +314,43 @@ class DatabaseStorage implements IStorage {
       return overdueTasks;
     } catch (error) {
       console.error('Error getting overdue tasks:', error);
+      return [];
+    }
+  }
+  
+  /**
+   * Get all overdue tasks across all users - for admin and manager roles
+   */
+  async getAllOverdueTasks(): Promise<Task[]> {
+    try {
+      const now = new Date();
+      console.log(`Fetching all overdue tasks across all users, current date: ${now.toISOString()}`);
+      
+      // Get all tasks
+      const result = await this.db.select().from(tasks);
+      
+      // Filter for all overdue and incomplete tasks regardless of user assignment
+      const allOverdueTasks = result.filter(task => {
+        // Skip tasks without due date
+        if (!task.dueDate) return false;
+        
+        // Task must not be completed
+        if (task.status === 'completed') return false;
+        
+        // Check if due date is in the past
+        try {
+          const dueDate = new Date(task.dueDate);
+          return dueDate < now;
+        } catch (err) {
+          console.error(`Error parsing due date for task ${task.id}:`, err);
+          return false;
+        }
+      });
+      
+      console.log(`Found ${allOverdueTasks.length} total overdue tasks across all users`);
+      return allOverdueTasks;
+    } catch (error) {
+      console.error('Error getting all overdue tasks:', error);
       return [];
     }
   }

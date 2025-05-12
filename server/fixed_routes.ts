@@ -476,19 +476,29 @@ export async function registerRoutes(app: Express, apiRouter?: Router): Promise<
     console.log("GET /tasks/overdue - Fetching overdue tasks");
     
     try {
-      // Get user ID from session
-      const userId = (req.user as any).id;
+      // Get user info from session
+      const currentUser = req.user as any;
+      const userId = currentUser.id;
       if (!userId) {
         console.log('No user ID found in session');
         return res.status(401).json({ message: "Invalid user session" });
       }
 
-      console.log(`Finding overdue tasks for user ${userId}`);
+      // Role-based access control
+      // Admins and managers see all overdue tasks, regular users only see their own
+      let overdueTasks: Task[] = [];
       
-      // Use the proper storage method to get overdue tasks
-      const overdueTasks = await storage.getOverdueTasks(userId);
+      if (currentUser.role === UserRole.ADMIN || currentUser.role === UserRole.MANAGER) {
+        console.log(`Admin/Manager ${userId} requesting all overdue tasks`);
+        // Admins and managers see all overdue tasks
+        overdueTasks = await storage.getAllOverdueTasks();
+      } else {
+        console.log(`User ${userId} requesting their overdue tasks`);
+        // Regular users only see their own overdue tasks
+        overdueTasks = await storage.getOverdueTasks(userId);
+      }
       
-      console.log(`Found ${overdueTasks.length} overdue tasks for user ${userId}`);
+      console.log(`Found ${overdueTasks.length} overdue tasks for user with role ${currentUser.role}`);
       return res.json(overdueTasks);
     } catch (error) {
       console.error('Error fetching overdue tasks:', error);
