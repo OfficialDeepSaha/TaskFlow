@@ -80,6 +80,24 @@ html {
   opacity: 1;
 }
 
+/* Mask border effect for auth UI */
+.mask-border {
+  mask-image: linear-gradient(to right, black 2px, transparent 2px), 
+              linear-gradient(to bottom, black 2px, transparent 2px), 
+              linear-gradient(to left, black 2px, transparent 2px), 
+              linear-gradient(to top, black 2px, transparent 2px);
+  mask-position: 0 0, 0 0, 100% 0, 0 100%;
+  mask-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  mask-repeat: no-repeat;
+  -webkit-mask-image: linear-gradient(to right, black 2px, transparent 2px), 
+                      linear-gradient(to bottom, black 2px, transparent 2px), 
+                      linear-gradient(to left, black 2px, transparent 2px), 
+                      linear-gradient(to top, black 2px, transparent 2px);
+  -webkit-mask-position: 0 0, 0 0, 100% 0, 0 100%;
+  -webkit-mask-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+}
+
 @layer components {
   /* Custom scrollbar for modern browsers */
   .custom-scrollbar {

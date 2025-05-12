@@ -13,7 +13,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/hooks/use-auth";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import { searchTasks } from "@/services/taskSearchService";
+import { Task } from "@shared/schema";
 import { getInitials, getAvatarColor } from "@/lib/utils";
 import { useLocation } from "wouter";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -38,11 +40,55 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
   const { theme, setTheme } = useTheme();
   const { user, logoutMutation } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchRef = useRef<NodeJS.Timeout>();
   const [location, navigate] = useLocation();
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [searchResults, setSearchResults] = useState<Task[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showSearchResults, setShowSearchResults] = useState(false);
   
   // Notifications completely removed
 
+  // Handle search input changes with debounce
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    
+    // Clear previous timeout
+    if (debouncedSearchRef.current) {
+      clearTimeout(debouncedSearchRef.current);
+    }
+    
+    if (value.trim().length >= 1) {
+      setIsSearching(true);
+      // Set a new timeout to call search API after debounce
+      debouncedSearchRef.current = setTimeout(async () => {
+        try {
+          const results = await searchTasks(value);
+          setSearchResults(results);
+          setShowSearchResults(true);
+        } catch (error) {
+          console.error('Error searching tasks:', error);
+        } finally {
+          setIsSearching(false);
+        }
+        
+        // Also call original onSearch prop if provided
+        if (onSearch) {
+          onSearch(value);
+        }
+      }, 300); // 300ms debounce
+    } else {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      
+      // Call onSearch with empty string
+      if (onSearch) {
+        onSearch('');
+      }
+    }
+  };
+  
   // Handle search submission
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,21 +137,64 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
 
           <div className="flex items-center space-x-2 md:space-x-4">
             {/* Search Form */}
-            <form onSubmit={handleSearch} className="relative hidden md:block">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className={`h-4 w-4 ${isSearchFocused ? 'text-primary' : 'text-muted-foreground'} transition-colors duration-200`} />
-              </div>
-              <Input
-                type="text"
-                placeholder="Search tasks..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onFocus={() => setIsSearchFocused(true)}
-                onBlur={() => setIsSearchFocused(false)}
-                className={`pl-10 pr-3 py-2 w-56 lg:w-72 border-muted transition-all duration-200
-                  ${isSearchFocused ? 'border-primary ring-1 ring-primary/20' : 'hover:border-border'}`}
-              />
-            </form>
+            <div className="relative hidden md:block">
+              <form onSubmit={handleSearch} className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search className={`h-4 w-4 ${isSearchFocused ? 'text-primary' : 'text-muted-foreground'} transition-colors duration-200`} />
+                </div>
+                <Input
+                  type="text"
+                  placeholder="Search tasks..."
+                  value={searchTerm}
+                  onChange={handleSearchChange}
+                  onFocus={() => setIsSearchFocused(true)}
+                  onBlur={() => {
+                    setIsSearchFocused(false);
+                    // Delay hiding search results to allow clicking on them
+                    setTimeout(() => setShowSearchResults(false), 200);
+                  }}
+                  className={`pl-10 pr-3 py-2 w-56 lg:w-72 border-muted transition-all duration-200
+                    ${isSearchFocused ? 'border-primary ring-1 ring-primary/20' : 'hover:border-border'}`}
+                  aria-label="Search tasks"
+                />
+                {isSearching && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <div className="animate-spin h-4 w-4 border-2 border-primary/20 border-t-primary rounded-full"></div>
+                  </div>
+                )}
+              </form>
+              
+              {/* Search Results Dropdown */}
+              {showSearchResults && searchTerm.trim() !== '' && (
+                <div className="absolute mt-1 w-full bg-popover shadow-md rounded-md border border-border z-50 max-h-80 overflow-y-auto">
+                  {searchResults.length > 0 ? (
+                    <ul className="py-1">
+                      {searchResults.map((task) => (
+                        <li key={task.id} className="px-4 py-2 hover:bg-accent cursor-pointer" 
+                            onClick={() => {
+                              // Navigate to task details page using the new route pattern
+                              navigate(`/task-view/${task.id}`);
+                              setShowSearchResults(false);
+                            }}>
+                          <div className="font-medium text-sm">{task.title}</div>
+                          {task.description && (
+                            <div className="text-xs text-muted-foreground truncate">
+                              {task.description.length > 60
+                                ? `${task.description.substring(0, 60)}...`
+                                : task.description}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="px-4 py-3 text-sm text-muted-foreground text-center">
+                      No tasks found matching "{searchTerm}"
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Notification Center */}
             <div className="animate-in fade-in duration-500">
@@ -117,19 +206,30 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    variant="outline"
-                    size="icon"
+                    size="sm"
                     onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                    className="border-muted text-muted-foreground hover:text-foreground transition-all duration-200
-                      hover:border-border"
+                    className={`relative overflow-hidden transition-all duration-300 ease-in-out ${theme === "dark" 
+                      ? 'bg-gradient-to-br from-indigo-500/20 to-purple-600/20 text-amber-300 hover:text-amber-200 border border-indigo-600/30 hover:border-indigo-500/50 shadow-inner shadow-indigo-500/10' 
+                      : 'bg-gradient-to-br from-amber-200/80 to-amber-400/80 text-indigo-700 hover:text-indigo-900 border border-amber-300 hover:border-amber-400 shadow shadow-amber-200/50'}`}
                     aria-label="Toggle theme"
                   >
-                    {theme === "dark" ? (
-                      <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                    ) : (
-                      <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-                    )}
-                    <span className="sr-only">Toggle theme</span>
+                    <div className="relative flex items-center justify-center gap-2 z-10">
+                      {theme === "dark" ? (
+                        <>
+                          <Sun className="h-4 w-4 animate-spin-slow" />
+                          <span className="text-xs font-medium">Light Mode</span>
+                        </>
+                      ) : (
+                        <>
+                          <Moon className="h-4 w-4 animate-pulse" />
+                          <span className="text-xs font-medium">Dark Mode</span>
+                        </>
+                      )}
+                    </div>
+                    <div className={`absolute inset-0 opacity-20 ${theme === "dark" 
+                      ? 'bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-yellow-300 via-amber-200 to-transparent' 
+                      : 'bg-[radial-gradient(circle_at_bottom_left,_var(--tw-gradient-stops))] from-indigo-900 via-purple-900 to-transparent'}`}>
+                    </div>
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom">
@@ -153,14 +253,11 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="cursor-pointer flex items-center gap-2">
+                <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => navigate('/profile')}>
                   <User className="h-4 w-4" />
                   <span>Profile</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem className="cursor-pointer flex items-center gap-2">
-                  <Settings className="h-4 w-4" />
-                  <span>Settings</span>
-                </DropdownMenuItem>
+                
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive flex items-center gap-2">
                   <LogOut className="h-4 w-4" />

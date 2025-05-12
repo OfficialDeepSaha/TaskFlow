@@ -329,9 +329,10 @@ export function TaskForm({ isOpen, onClose, editTask }: TaskFormProps) {
         data: formData,
       });
     } else {
+      // Let the server assign the createdById from the authenticated session
       createTaskMutation.mutate({
         ...formData,
-        createdById: 0, // This will be set properly on the server based on the authenticated user
+        // Don't set createdById, let the server handle it
       } as InsertTask);
     }
   };

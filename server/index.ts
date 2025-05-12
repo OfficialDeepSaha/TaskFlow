@@ -4,6 +4,10 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./fixed_routes";
 import { registerAnalyticsRoutes } from "./analyticsRoutes";
 import { registerUserManagementRoutes } from "./userManagementRoutes";
+import { registerProfileRoutes } from "./profileRoutes";
+import { registerNotificationRoutes } from "./notificationRoutes";
+import { registerUserProfileRoutes } from "./userProfileRoutes";
+import { registerReportsRoutes } from "./reportsRoutes";
 import { setupVite, serveStatic, log } from "./vite";
 import cors from "cors";
 import path from 'path';
@@ -182,6 +186,18 @@ const findAvailablePort = (preferredPort: number, maxAttempts = 10): Promise<num
     
     // Register user management routes before mounting the API router
     registerUserManagementRoutes(apiRouter);
+    
+    // Register profile routes
+    registerProfileRoutes(apiRouter);
+    
+    // Register notification routes
+    registerNotificationRoutes(apiRouter);
+    
+    // Register user profile routes
+    registerUserProfileRoutes(apiRouter);
+    
+    // Register reports routes
+    registerReportsRoutes(apiRouter);
 
     // Mount API router at /api after auth and sessions are set up
     app.use('/api', apiRouter);

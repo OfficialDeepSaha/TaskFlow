@@ -17,6 +17,7 @@ import {
   sendTaskStatusUpdateNotification, 
   sendTaskCompletionNotification 
 } from "./emailService";
+import { setupWebSocketServer } from "./websocketManager";
 import { createTaskNotificationSystem } from "./taskNotifications";
 
 // Port listen is now handled in index.ts
@@ -49,9 +50,9 @@ export async function registerRoutes(app: Express, apiRouter?: Router): Promise<
   
   // Set up WebSocket server for real-time notifications
   const wss = new WebSocketServer({ 
-    server: httpServer, 
-    path: undefined, // Allow connections to the root path
-    clientTracking: true,
+    server: httpServer,
+    // Allow connections from all origins
+    verifyClient: () => true,
     perMessageDeflate: {
       zlibDeflateOptions: {
         chunkSize: 1024,
@@ -66,47 +67,14 @@ export async function registerRoutes(app: Express, apiRouter?: Router): Promise<
     }
   });
   
-  console.log('[WEBSOCKET] Server initialized and listening on the same port as HTTP server');
-
-  // Implement heartbeat to prevent connection dropouts
-  const heartbeat = function(this: WebSocket) {
-    (this as any).isAlive = true;
-    console.log('[WEBSOCKET] Heartbeat received from client');
-  };
-  
-  // Store active connections by user ID
-  const clients = new Map<number, Set<WebSocket>>();
+  // Set up the WebSocket server with our manager
+  const { clients } = setupWebSocketServer(wss, app);
   
   // Initialize task notification system
   const notifications = createTaskNotificationSystem(app, wss, clients);
   
-  // Set up the heartbeat interval
-  const pingInterval = setInterval(() => {
-    let activeConnections = 0;
-    
-    wss.clients.forEach((ws) => {
-      activeConnections++;
-      
-      if ((ws as any).isAlive === false) {
-        console.log('[WEBSOCKET] Terminating dead connection');
-        return ws.terminate();
-      }
-      
-      // Mark as inactive for the next ping
-      (ws as any).isAlive = false;
-      // Send ping
-      ws.ping();
-    });
-    
-    if (activeConnections > 0) {
-      console.log(`[WEBSOCKET] Sent heartbeat to ${activeConnections} connections`);
-    }
-  }, 30000); // 30 seconds interval
   
-  // Clear interval when server is closed
-  wss.on('close', () => {
-    clearInterval(pingInterval);
-  });
+  // WebSocket cleanup is handled by the websocketManager
   
   // New endpoints for recurring tasks and audit logs
 
@@ -207,238 +175,6 @@ export async function registerRoutes(app: Express, apiRouter?: Router): Promise<
     }
   });
   
-  // Websocket connection handler
-  wss.on('connection', async (ws: WebSocket, req: any) => {
-    console.log('--------------------------------');
-    console.log('[WEBSOCKET] New connection from:', req.headers.origin);
-    console.log('[WEBSOCKET] Connection URL:', req.url);
-    
-    // Track connection lifetime
-    const connectedAt = Date.now();
-    let userId: number | null = null;
-    
-    // Initialize heartbeat
-    (ws as any).isAlive = true;
-    ws.on('pong', heartbeat);
-    
-    // Handle errors
-    ws.on('error', (error: any) => {
-      console.error('[WEBSOCKET] Connection error:', error);
-    });
-    
-    try {
-      // Add this WebSocket to a set of pending connections
-      console.log('[WEBSOCKET] Connection pending authentication');
-      
-      // Authentication will happen when client sends auth message
-      // or via URL token parameter
-      
-      // Try to authenticate from URL parameters first
-      if (req.url) {
-        try {
-          const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
-          const token = parsedUrl.searchParams.get('token');
-          const sessionId = parsedUrl.searchParams.get('sessionId');
-          
-          // First try session-based authentication if sessionId is provided
-          let authenticated = false;
-          
-          if (sessionId) {
-            console.log('[WEBSOCKET] Attempting to authenticate with session ID');
-            
-            try {
-              // Verify session exists and contains userId
-              const session = await new Promise<any>((resolve, reject) => {
-                storage.sessionStore.get(sessionId, (err: Error | null, session: any) => {
-                  if (err) reject(err);
-                  else resolve(session);
-                });
-              });
-              
-              if (session && session.userId) {
-                // Session found with userId
-                const validUserId = session.userId as number; // Ensure this is a number
-                userId = validUserId;
-                const user = await storage.getUser(validUserId);
-                
-                if (user) {
-                  console.log(`[WEBSOCKET] User ${validUserId} (${user.name}) authenticated via session ID`);
-                  authenticated = true;
-                  
-                  // Save userId on the socket for later reference
-                  (ws as any).userId = validUserId;
-                  
-                  // Add connection to clients map
-                  if (!clients.has(validUserId)) {
-                    clients.set(validUserId, new Set());
-                  }
-                  clients.get(validUserId)!.add(ws);
-                  
-                  // Send authentication success message
-                  ws.send(JSON.stringify({
-                    type: 'auth_success',
-                    userId: validUserId, // Use the validated userId
-                    timestamp: Date.now(),
-                    authMethod: 'session'
-                  }));
-                  
-                  // Refresh session to prevent expiration
-                  storage.sessionStore.touch(sessionId, session, (err: Error | null) => {
-                    if (err) console.error('[WEBSOCKET] Error refreshing session:', err);
-                    else console.log('[WEBSOCKET] Session refreshed successfully');
-                  });
-                  
-                  console.log('[WEBSOCKET] Session-based authentication successful');
-                }
-              }
-            } catch (error) {
-              console.error('[WEBSOCKET] Session authentication error:', error);
-            }
-          }
-          
-          // If session auth failed, try token-based auth
-          if (!authenticated && token && !isNaN(parseInt(token))) {
-            const validTokenId = parseInt(token);
-            userId = validTokenId;
-            console.log('[WEBSOCKET] Token authentication from URL:', validTokenId);
-            
-            // Verify user exists
-            const user = await storage.getUser(validTokenId);
-            if (user) {
-              console.log(`[WEBSOCKET] User ${validTokenId} (${user.name}) authenticated via token`);
-              
-              // Save userId on the socket for later reference
-              (ws as any).userId = validTokenId;
-              
-              // Add connection to clients map
-              if (!clients.has(validTokenId)) {
-                clients.set(validTokenId, new Set());
-              }
-              clients.get(validTokenId)!.add(ws);
-              
-              // Send authentication success message
-              ws.send(JSON.stringify({
-                type: 'auth_success',
-                userId: validTokenId,
-                timestamp: Date.now(),
-                authMethod: 'token'
-              }));
-              
-              // Authentication successful, no need to wait for auth message
-              console.log('[WEBSOCKET] URL token authentication successful');
-            } else {
-              console.error('[WEBSOCKET] User not found:', userId);
-              // Don't close yet, wait for auth message
-            }
-          }
-        } catch (error) {
-          console.error('[WEBSOCKET] Error parsing URL:', error);
-          // Continue to message-based auth
-        }
-      }
-      
-      // Handle messages
-      ws.on('message', async (message: Buffer) => {
-        try {
-          const data = JSON.parse(message.toString());
-          console.log(`[WEBSOCKET] Message received:`, typeof data === 'object' ? data.type : 'unknown format');
-          
-          // Handle auth messages (if not already authenticated via URL)
-          if (data.type === 'auth' && !userId) {
-            if (data.userId && !isNaN(parseInt(data.userId.toString()))) {
-              const authenticatingUserId = parseInt(data.userId.toString());
-              console.log('[WEBSOCKET] Authenticating user:', authenticatingUserId);
-              
-              // Verify user exists
-              const user = await storage.getUser(authenticatingUserId);
-              if (user) {
-                userId = authenticatingUserId;
-                console.log(`[WEBSOCKET] User ${userId} (${user.name}) authenticated via message`);
-                
-                // Save userId on the socket for later reference
-                (ws as any).userId = userId;
-                
-                // Add connection to clients map
-                if (!clients.has(userId)) {
-                  clients.set(userId, new Set());
-                }
-                clients.get(userId)!.add(ws);
-                
-                // Send authentication success message
-                ws.send(JSON.stringify({
-                  type: 'auth_success',
-                  userId: userId,
-                  timestamp: Date.now()
-                }));
-              } else {
-                console.error('[WEBSOCKET] User not found:', authenticatingUserId);
-                ws.send(JSON.stringify({
-                  type: 'auth_error',
-                  message: 'User not found',
-                  timestamp: Date.now()
-                }));
-              }
-            } else {
-              console.error('[WEBSOCKET] Invalid userId in auth message:', data.userId);
-              ws.send(JSON.stringify({
-                type: 'auth_error',
-                message: 'Invalid user ID',
-                timestamp: Date.now()
-              }));
-            }
-          }
-          // Handle ping messages (client heartbeat)
-          else if (data.type === 'ping') {
-            console.log('[WEBSOCKET] Ping received, sending pong');
-            ws.send(JSON.stringify({
-              type: 'pong',
-              timestamp: data.timestamp || Date.now(),
-              serverTime: Date.now()
-            }));
-          }
-          // Log any other message types
-          else {
-            console.log(`[WEBSOCKET] Received message of type: ${data.type}`);
-          }
-        } catch (error) {
-          console.error('[WEBSOCKET] Error processing message:', error);
-        }
-      });
-      
-      // Handle disconnection
-      ws.on('close', (code, reason) => {
-        const duration = Date.now() - connectedAt;
-        console.log(`[WEBSOCKET] User ${userId} disconnected after ${duration}ms. Code: ${code}, Reason: ${reason || 'None'}`);
-        
-        // Remove from clients map
-        if (userId && clients.has(userId)) {
-          clients.get(userId)!.delete(ws);
-          if (clients.get(userId)!.size === 0) {
-            clients.delete(userId);
-          }
-        }
-      });
-    } catch (error) {
-      console.error('[WEBSOCKET] Error in connection handling:', error);
-      ws.close(1011, 'Server error');
-    }
-  });
-  
-  // Helper to send notifications to users - always store on app.locals for consistent access
-  app.locals.sendNotification = (userId: number, notification: any) => {
-    if (!clients.has(userId)) return;
-    
-    clients.get(userId)!.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify({
-          type: 'notification',
-          data: notification,
-          timestamp: Date.now()
-        }));
-      }
-    });
-  };
-  
   // Now define all the REST API routes
   
   // Task routes
@@ -506,6 +242,48 @@ export async function registerRoutes(app: Express, apiRouter?: Router): Promise<
     }
   });
 
+  // Search tasks endpoint
+  router.get("/tasks/search", ensureAuthenticated, async (req: Request, res: Response) => {
+    try {
+      const query = req.query.q as string || '';
+      console.log(`Searching for tasks with query: "${query}"`);
+      
+      // Get the current user
+      const currentUser = req.user as any;
+      
+      // Create filters object
+      const filters: {
+        status?: string[];
+        priority?: string[];
+        assignedToId?: number;
+        createdById?: number;
+      } = {};
+      
+      // Add filters based on URL parameters
+      if (req.query.status) {
+        filters.status = (req.query.status as string).split(',');
+      }
+      
+      if (req.query.priority) {
+        filters.priority = (req.query.priority as string).split(',');
+      }
+      
+      // For regular users, only show their assigned tasks
+      if (currentUser.role !== UserRole.ADMIN && currentUser.role !== UserRole.MANAGER) {
+        filters.assignedToId = currentUser.id;
+      }
+      
+      // Search tasks
+      const filteredTasks = await storage.searchTasks(query, filters);
+      console.log(`Found ${filteredTasks.length} tasks matching query: "${query}"`);
+      
+      res.json(filteredTasks);
+    } catch (error) {
+      console.error('Error searching tasks:', error);
+      res.status(500).json({ message: "Error searching tasks" });
+    }
+  });
+
   // Get task by ID - this must come AFTER specific task routes
   router.get("/tasks/:id", ensureAuthenticated, async (req: Request, res: Response) => {
     try {
@@ -530,8 +308,14 @@ export async function registerRoutes(app: Express, apiRouter?: Router): Promise<
       return res.status(403).json({ message: "Forbidden: insufficient permissions to create tasks" });
     }
     try {
-      // Validate request body
-      const taskData = insertTaskSchema.parse(req.body);
+      // Add the current user ID to the task data before validation
+      const taskDataWithCreator = {
+        ...req.body,
+        createdById: currentUser.id
+      };
+      
+      // Validate request body with the added createdById
+      const taskData = insertTaskSchema.parse(taskDataWithCreator);
       
       // Ensure assignedToId is either null or a number (not undefined, NaN, etc.)
       if (taskData.assignedToId !== null && isNaN(Number(taskData.assignedToId))) {
@@ -559,16 +343,23 @@ export async function registerRoutes(app: Express, apiRouter?: Router): Promise<
       console.log("Task created:", JSON.stringify(newTask, null, 2));
       
       // Send notification if the task is assigned to someone
-      if (newTask.assignedToId && notifications) {
+      if (newTask.assignedToId) {
         try {
           // Get the assigner (creator) name
           const assigner = await storage.getUser(currentUser.id);
           const assignerName = assigner ? assigner.name : 'An admin';
           
-          // Notify the assignee
-          notifications.notifyTaskAssigned(newTask, newTask.assignedToId, assignerName);
+          // Get the notification system from app.locals
+          const taskNotificationSystem = app.locals.taskNotifications;
           
-          console.log(`Notification sent to user ${newTask.assignedToId} for task assignment`);
+          // Only attempt to notify if the notification system is available
+          if (taskNotificationSystem && typeof taskNotificationSystem.notifyTaskAssigned === 'function') {
+            // Notify the assignee
+            taskNotificationSystem.notifyTaskAssigned(newTask, newTask.assignedToId, assignerName);
+            console.log(`Notification sent to user ${newTask.assignedToId} for task assignment`);
+          } else {
+            console.log('Task notification system not available or not properly initialized');
+          }
         } catch (notifyError) {
           console.error('Error sending task assignment notification:', notifyError);
           // Don't fail the request if notification fails
@@ -966,6 +757,8 @@ export async function registerRoutes(app: Express, apiRouter?: Router): Promise<
       res.status(500).json({ message: "Error fetching tasks" });
     }
   });
+
+
 
   // Rest of your routes...
 

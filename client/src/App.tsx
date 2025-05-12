@@ -16,6 +16,10 @@ import CreatedTasksPage from "./pages/created-tasks-page";
 import OverdueTasksPage from "./pages/overdue-tasks-page";
 import AdminAnalyticsPage from "./pages/admin-analytics-page";
 import TeamMembersPage from "./pages/team-members-page";
+import ProfilePage from "./pages/profile-page";
+import ReportsPage from "./pages/reports-page";
+import TaskDetailPage from "./pages/task-detail-page";
+import SimpleTaskDetail from "./pages/simple-task-detail";
 import { QuickTaskButton } from "./components/quick-task-button";
 import { OfflineBanner } from "./components/offline-banner";
 import { AuthContext } from "./hooks/use-auth";
@@ -225,10 +229,17 @@ function App() {
                     <Route path="/" component={HomePage} />
                     <Route path="/dashboard" component={DashboardPage} />
                     <Route path="/analytics" component={AdminAnalyticsPage} />
+                    <Route path="/reports" component={ReportsPage} />
                     <Route path="/team-members" component={TeamMembersPage} />
 
                     
                     {/* Task Routes */}
+                    <Route path="/task-view/:id">
+                      {(params) => <SimpleTaskDetail id={params.id} />}
+                    </Route>
+                    <Route path="/tasks/:id">
+                      {(params) => <TaskDetailPage params={params} />}
+                    </Route>
                     <Route path="/tasks">
                       {(params) => <TasksPage {...params} inDashboard={true} />}
                     </Route>
@@ -245,7 +256,7 @@ function App() {
               
                     
                     {/* Settings Routes */}
-                    <Route path="/profile" component={DashboardPage} />
+                    <Route path="/profile" component={ProfilePage} />
                     <Route path="/preferences" component={DashboardPage} />
                     
                     <Route component={NotFound} />
