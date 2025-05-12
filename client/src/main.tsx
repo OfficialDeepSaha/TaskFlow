@@ -54,17 +54,22 @@ function handleRenderError(error: Error) {
   }
 }
 
-// Mount the React app with error handling
-try {
+// Function to ensure page is ready before mounting React
+// Using a variable to allow reassignment during HMR
+let mountApp = function() {
   const container = document.getElementById("root");
   if (!container) {
-    throw new Error("Root container missing in index.html");
+    console.error("Root container missing in index.html");
+    return;
   }
   
   const root = createRoot(container);
   
   // Reset any existing error state
   container.innerHTML = '';
+  
+  // Add loading class to help prevent white flash
+  document.body.classList.add('app-loading');
   
   // Mount with all providers in the correct order
   root.render(
@@ -76,6 +81,33 @@ try {
       </ThemeProvider>
     </QueryClientProvider>
   );
+  
+  // Remove loading class after a short delay
+  setTimeout(() => {
+    document.body.classList.remove('app-loading');
+  }, 100);
+  
+  // Log for debugging
+  console.log(`[App] Mounted successfully at ${new Date().toISOString()}`);
+  console.log(`[App] Current path: ${window.location.pathname}`);
+}
+
+// Add event listeners to help with reloading
+window.addEventListener('beforeunload', () => {
+  // Store current route to help with navigation on reload
+  sessionStorage.setItem('lastRoute', window.location.pathname);
+  console.log(`[App] Storing last route: ${window.location.pathname}`);
+});
+
+// Mount the React app with error handling
+try {
+  // Check if document is already loaded
+  if (document.readyState === 'complete') {
+    mountApp();
+  } else {
+    // Wait for document to be fully loaded
+    window.addEventListener('load', mountApp);
+  }
   
   // Register service worker for PWA support
   serviceWorkerRegistration.register().then(() => {
@@ -114,10 +146,59 @@ try {
     document.body.classList.add('offline-mode');
   }
   
+  // Handle hot module replacement
   if (import.meta.hot) {
     import.meta.hot.accept();
+    
+    // Store the root reference for proper cleanup during HMR
+    let rootInstance: any = null;
+    
+    // Store original mountApp function
+    const originalMountApp = mountApp;
+    
+    // Override mountApp to capture root reference
+    mountApp = function() {
+      const container = document.getElementById("root");
+      if (!container) {
+        console.error("Root container missing in index.html");
+        return;
+      }
+      
+      // Store root reference for HMR cleanup
+      rootInstance = createRoot(container);
+      
+      // Reset any existing error state
+      container.innerHTML = '';
+      
+      // Add loading class to help prevent white flash
+      document.body.classList.add('app-loading');
+      
+      // Mount with all providers in the correct order
+      rootInstance.render(
+        <QueryClientProvider client={queryClient}>
+          <ThemeProvider defaultTheme="light" storageKey="taskflow-theme">
+            <AuthProvider>
+              <App />
+            </AuthProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
+      );
+      
+      // Remove loading class after a short delay
+      setTimeout(() => {
+        document.body.classList.remove('app-loading');
+      }, 100);
+      
+      console.log(`[App] Mounted successfully at ${new Date().toISOString()}`);
+      console.log(`[App] Current path: ${window.location.pathname}`);
+    };
+    
+    // Handle proper cleanup during hot reload
     import.meta.hot.dispose(() => {
-      root.unmount();
+      if (rootInstance) {
+        console.log('[HMR] Unmounting React instance');
+        rootInstance.unmount();
+      }
     });
   }
 } catch (error) {

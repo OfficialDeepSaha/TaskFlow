@@ -3,6 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="TaskFlow - Task Management Application" />
+    <base href="/" />
+    <title>TaskFlow</title>
+    <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
+    <!-- Preload key resources to avoid render issues -->
+    <link rel="preload" href="/assets/index.css" as="style">
+    <link rel="preload" href="/assets/index.js" as="script">
+    <!-- Ensure page doesn't flash white on refresh -->
+    <style>
+      body, html { background-color: #f8fafc; margin: 0; }
+      @media (prefers-color-scheme: dark) {
+        body, html { background-color: #0f172a; }
+      }
+      #root { min-height: 100vh; display: flex; flex-direction: column; }
+    </style>
   </head>
   <body>
     <div id="root"></div>

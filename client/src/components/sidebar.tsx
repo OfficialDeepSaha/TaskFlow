@@ -29,7 +29,8 @@ import {
   FolderClosed,
   FolderOpen,
   Archive,
-  Mail
+  Mail,
+  LineChart
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/components/theme-provider";
@@ -123,11 +124,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-2 mt-2 mb-4">
-                <Button variant="outline" size="sm" className="h-9 text-xs">Profile</Button>
-                <Button variant="outline" size="sm" className="h-9 text-xs">Settings</Button>
-                <Button variant="outline" size="sm" className="h-9 text-xs" onClick={handleLogout}>Logout</Button>
-              </div>
+             
             </motion.div>
           )}
 
@@ -152,6 +149,43 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
             </Link>
           </div>
 
+          {isAdmin && (
+            <div className="space-y-1">
+              <p className="px-4 pt-4 pb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Admin Tools
+              </p>
+              
+              <Link href="/analytics" onClick={closeOnMobile}>
+                <a
+                  className={cn(
+                    "flex items-center px-3 py-2 text-sm rounded-md transition-colors duration-200",
+                    "hover:bg-accent/50 hover:text-foreground group cursor-pointer",
+                    location === "/analytics" 
+                      ? "bg-primary/10 text-primary font-medium" 
+                      : "text-muted-foreground"
+                  )}
+                >
+                  <LineChart className="mr-3 h-5 w-5 group-hover:text-primary transition-colors duration-200" />
+                  <span>Analytics</span>
+                </a>
+              </Link>
+              
+              <Link href="/team-members" onClick={closeOnMobile}>
+                <a
+                  className={cn(
+                    "flex items-center px-3 py-2 text-sm rounded-md transition-colors duration-200",
+                    "hover:bg-accent/50 hover:text-foreground group cursor-pointer",
+                    location === "/team-members" 
+                      ? "bg-primary/10 text-primary font-medium" 
+                      : "text-muted-foreground"
+                  )}
+                >
+                  <Users className="mr-3 h-5 w-5 group-hover:text-primary transition-colors duration-200" />
+                  <span>Team Members</span>
+                </a>
+              </Link>
+            </div>
+          )}
           
           
           <div className="space-y-1">
@@ -249,35 +283,7 @@ export function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
             )} */}
           </div>
           
-          {/* {isAdmin && (
-            <div className="space-y-1">
-              <p className="px-4 pt-4 pb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Calendar
-              </p>
-              
-              <div
-                className={cn(
-                  "flex items-center px-3 py-2 text-sm rounded-md transition-colors duration-200",
-                  "hover:bg-accent/50 hover:text-foreground group cursor-pointer",
-                  "text-muted-foreground"
-                )}
-              >
-                <Calendar className="mr-3 h-5 w-5 group-hover:text-primary transition-colors duration-200" />
-                <span>Schedule</span>
-              </div>
-              
-              <div
-                className={cn(
-                  "flex items-center px-3 py-2 text-sm rounded-md transition-colors duration-200",
-                  "hover:bg-accent/50 hover:text-foreground group cursor-pointer",
-                  "text-muted-foreground"
-                )}
-              >
-                <Bell className="mr-3 h-5 w-5 group-hover:text-primary transition-colors duration-200" />
-                <span>Reminders</span>
-              </div>
-            </div>
-          )} */}
+         
         </ScrollArea>
         
         <div className="p-4 border-t border-border/40 mt-auto">

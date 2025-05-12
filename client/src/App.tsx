@@ -14,6 +14,8 @@ import TasksPage from "./pages/tasks-page";
 import AssignedTasksPage from "./pages/assigned-tasks-page";
 import CreatedTasksPage from "./pages/created-tasks-page";
 import OverdueTasksPage from "./pages/overdue-tasks-page";
+import AdminAnalyticsPage from "./pages/admin-analytics-page";
+import TeamMembersPage from "./pages/team-members-page";
 import { QuickTaskButton } from "./components/quick-task-button";
 import { AuthContext } from "./hooks/use-auth";
 import { Sidebar } from "./components/sidebar";
@@ -219,6 +221,9 @@ function App() {
                   <Switch>
                     <Route path="/" component={HomePage} />
                     <Route path="/dashboard" component={DashboardPage} />
+                    <Route path="/analytics" component={AdminAnalyticsPage} />
+                    <Route path="/team-members" component={TeamMembersPage} />
+
                     
                     {/* Task Routes */}
                     <Route path="/tasks">
@@ -234,15 +239,7 @@ function App() {
                       {(params) => <OverdueTasksPage {...params} inDashboard={true} />}
                     </Route>
                     
-                    {/* Admin Routes - only accessible to admins */}
-                    {/* {isAdmin && (
-                      <>
-                        <Route path="/admin/analytics" component={DashboardPage} />
-                        <Route path="/admin/team" component={DashboardPage} />
-                        <Route path="/admin/reports" component={DashboardPage} />
-                        <Route path="/admin/settings" component={DashboardPage} />
-                      </>
-                    )} */}
+              
                     
                     {/* Settings Routes */}
                     <Route path="/profile" component={DashboardPage} />

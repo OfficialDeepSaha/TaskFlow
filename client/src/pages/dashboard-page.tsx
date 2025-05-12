@@ -1115,15 +1115,15 @@ export default function DashboardPage() {
                 </CardFooter>
               </Card>
               
-              {/* Analytics Summary */}
-              <Card className="border-border/40">
+              
+              {/* <Card className="border-border/40">
                 
                 <CardContent className="pl-2">
                   <div className="h-[200px] w-full">
                     <AnalyticsDashboard />
                   </div>
                 </CardContent>
-              </Card>
+              </Card> */}
             </div>
             
             {/* Activity Timeline - Right Column (1/3 width) */}
@@ -1177,7 +1177,7 @@ export default function DashboardPage() {
                 </CardContent>
                 <CardFooter className="border-t py-3">
                   <Button variant="outline" size="sm" className="mx-auto" asChild>
-                    <Link href="/admin/team">Manage Team</Link>
+                    <Link href="/team-members">Manage Team</Link>
                   </Button>
                 </CardFooter>
               </Card>

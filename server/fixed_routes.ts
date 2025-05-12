@@ -470,7 +470,33 @@ export async function registerRoutes(app: Express, apiRouter?: Router): Promise<
     res.redirect("/tasks");
   });
 
-  // Get task by ID
+  // IMPORTANT: Move the specific overdue endpoint before the generic ID endpoint
+  // to prevent ID route from intercepting /overdue as an ID
+  router.get("/tasks/overdue", ensureAuthenticated, async (req: Request, res: Response) => {
+    console.log("GET /tasks/overdue - Fetching overdue tasks");
+    
+    try {
+      // Get user ID from session
+      const userId = (req.user as any).id;
+      if (!userId) {
+        console.log('No user ID found in session');
+        return res.status(401).json({ message: "Invalid user session" });
+      }
+
+      console.log(`Finding overdue tasks for user ${userId}`);
+      
+      // Use the proper storage method to get overdue tasks
+      const overdueTasks = await storage.getOverdueTasks(userId);
+      
+      console.log(`Found ${overdueTasks.length} overdue tasks for user ${userId}`);
+      return res.json(overdueTasks);
+    } catch (error) {
+      console.error('Error fetching overdue tasks:', error);
+      return res.status(500).json({ message: "Error retrieving overdue tasks" });
+    }
+  });
+
+  // Get task by ID - this must come AFTER specific task routes
   router.get("/tasks/:id", ensureAuthenticated, async (req: Request, res: Response) => {
     try {
       const taskId = parseInt(req.params.id);
@@ -658,54 +684,8 @@ export async function registerRoutes(app: Express, apiRouter?: Router): Promise<
     }
   });
   
-  // Extremely simple overdue tasks endpoint with hardcoded data
-  router.get("/tasks/overdue", (req: Request, res: Response) => {
-    console.log("Serving hardcoded overdue tasks data");
-    
-    // Get user ID if available, or use a default
-    const userId = req.user ? (req.user as any).id : 1;
-    
-    // Return hardcoded data that matches task schema perfectly
-    const overdueTasks = [
-      {
-        id: 901,
-        title: "Overdue Task 1",
-        description: "This task is overdue and needs attention",
-        status: "in_progress",
-        priority: "high",
-        dueDate: "2025-05-10T00:00:00.000Z", // Yesterday
-        assignedToId: userId,
-        createdById: userId,
-        createdAt: "2025-05-08T00:00:00.000Z",
-        updatedAt: "2025-05-09T00:00:00.000Z",
-        isRecurring: false,
-        recurringPattern: "none",
-        recurringEndDate: null,
-        parentTaskId: null,
-        colorCode: "default"
-      },
-      {
-        id: 902,
-        title: "Overdue Task 2",
-        description: "Another overdue task that requires attention",
-        status: "not_started",
-        priority: "medium",
-        dueDate: "2025-05-09T00:00:00.000Z", // 2 days ago
-        assignedToId: userId,
-        createdById: userId,
-        createdAt: "2025-05-07T00:00:00.000Z",
-        updatedAt: "2025-05-08T00:00:00.000Z",
-        isRecurring: false,
-        recurringPattern: "none",
-        recurringEndDate: null,
-        parentTaskId: null,
-        colorCode: "default"
-      }
-    ];
-    
-    // Return the data
-    return res.json(overdueTasks);
-  });
+  // Overdue tasks endpoint moved up in the routes order to prevent conflicts with the ID route
+
   // Get all users
   router.get("/users", async (req: Request, res: Response) => {    
     try {

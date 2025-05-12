@@ -3,6 +3,7 @@ import { config } from 'dotenv';
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./fixed_routes";
 import { registerAnalyticsRoutes } from "./analyticsRoutes";
+import { registerUserManagementRoutes } from "./userManagementRoutes";
 import { setupVite, serveStatic, log } from "./vite";
 import cors from "cors";
 import path from 'path';
@@ -175,11 +176,15 @@ const findAvailablePort = (preferredPort: number, maxAttempts = 10): Promise<num
     // This must happen before mounting the API router
     const server = await registerRoutes(app, apiRouter);
 
+    // Register analytics routes before mounting the API router
+    // This ensures they are registered with the proper path prefix
+    registerAnalyticsRoutes(apiRouter);
+    
+    // Register user management routes before mounting the API router
+    registerUserManagementRoutes(apiRouter);
+
     // Mount API router at /api after auth and sessions are set up
     app.use('/api', apiRouter);
-    
-    // Register analytics routes after auth is set up
-    registerAnalyticsRoutes(app);
     
     // Direct routes for common problematic endpoints
     app.get('/users', (req, res) => {
@@ -329,6 +334,16 @@ const findAvailablePort = (preferredPort: number, maxAttempts = 10): Promise<num
         return next();
       }
 
+      // Check for known client-side routes that need to be handled by React Router
+      const clientRoutes = [
+        '/dashboard', '/tasks', '/assigned', '/created', '/overdue',
+        '/admin', '/admin/analytics', '/admin/team', '/admin/reports', '/admin/settings',
+        '/profile', '/preferences'
+      ];
+      
+      // Log the request path to help with debugging
+      console.log(`[SPA] Handling route: ${req.path}`);
+      
       // For development, delegate to Vite middleware
       if (app.get("env") === "development") {
         return next();

@@ -1,4 +1,4 @@
-import { 
+import {
   users, tasks, notifications, auditLogs, taskMoodReactions,
   type User, type InsertUser, 
   type Task, type InsertTask, type UpdateTask, 
@@ -11,8 +11,11 @@ import session from "express-session";
 import createMemoryStore from "memorystore";
 import connectPg from "connect-pg-simple";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { eq, and, or, lt, desc, isNotNull, ne } from "drizzle-orm";
+import { eq, and, or, lt, desc, isNotNull, ne, sql } from "drizzle-orm";
+// Use dynamic import with await for ESM compatibility
 import postgres from "postgres";
+// If you encounter issues with the import above, you can use:
+// const postgres = (await import('postgres')).default;
 
 const MemoryStore = createMemoryStore(session);
 const PostgresSessionStore = connectPg(session);
@@ -21,11 +24,18 @@ const PostgresSessionStore = connectPg(session);
 const connectionString = process.env.DATABASE_URL;
 const client = postgres(connectionString || "", { ssl: 'require' });
 
+// Define the interface for storage operations
 export interface IStorage {
+  // Session store for auth
+  sessionStore: any;
+  
   // User operations
   getUser(id: number): Promise<User | undefined>;
+  getUserById(id: string | number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string | number, userData: Partial<User>): Promise<User | undefined>;
+  deleteUser(id: string | number): Promise<boolean>;
   getAllUsers(): Promise<User[]>;
   getUserNotificationPreferences(userId: number): Promise<any[]>;
   saveUserNotificationPreferences(userId: number, preferences: any[]): Promise<boolean>;
@@ -41,8 +51,8 @@ export interface IStorage {
   getTasksByCreator(userId: number): Promise<Task[]>;
   getOverdueTasks(userId: number): Promise<Task[]>;
   searchTasks(query: string, filters?: TaskFilters): Promise<Task[]>;
-  getRecurringTasks(): Promise<Task[]>; // Get all recurring tasks
-  createRecurringTaskInstances(task: Task): Promise<Task[]>; // For handling recurring tasks
+  getRecurringTasks(): Promise<Task[]>;
+  createRecurringTaskInstances(task: Task): Promise<Task[]>;
   
   // Notification operations
   createNotification(notification: InsertNotification): Promise<Notification>;
@@ -57,711 +67,179 @@ export interface IStorage {
   createTaskMoodReaction(moodReaction: InsertTaskMoodReaction): Promise<TaskMoodReaction>;
   getTaskMoodReactions(taskId: number): Promise<TaskMoodReaction[]>;
   getUserMoodReactions(userId: number): Promise<TaskMoodReaction[]>;
-  
-  // Session store
-  sessionStore: any; // Express SessionStore
 }
 
-export type TaskFilters = {
+// Define the TaskFilters interface
+export interface TaskFilters {
   status?: string[];
   priority?: string[];
   dueDate?: Date;
   assignedToId?: number;
   createdById?: number;
-};
-
-export class MemStorage implements IStorage {
-  private users: Map<number, User>;
-  private tasks: Map<number, Task>;
-  private notifications: Map<number, Notification>;
-  private auditLogs: Map<number, AuditLog>;
-  private taskMoodReactions: Map<number, TaskMoodReaction>;
-  private userCurrentId: number;
-  private taskCurrentId: number;
-  private notificationCurrentId: number;
-  private auditLogCurrentId: number;
-  private moodReactionCurrentId: number;
-  sessionStore: any; // Express SessionStore
-
-  constructor() {
-    this.users = new Map();
-    this.tasks = new Map();
-    this.notifications = new Map();
-    this.auditLogs = new Map();
-    this.taskMoodReactions = new Map();
-    this.userCurrentId = 1;
-    this.taskCurrentId = 1;
-    this.notificationCurrentId = 1;
-    this.auditLogCurrentId = 1;
-    this.moodReactionCurrentId = 1;
-    this.sessionStore = new MemoryStore({
-      checkPeriod: 86400000, // 24 hours
-    });
-  }
-
-  // User operations
-  async getUser(id: number): Promise<User | undefined> {
-    return this.users.get(id);
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
-  }
-
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = this.userCurrentId++;
-    const user: User = { 
-      id,
-      username: insertUser.username,
-      name: insertUser.name,
-      password: insertUser.password,
-      role: insertUser.role || 'user',
-      lastActive: new Date(),
-      avatar: null,
-      email: insertUser.email || null,
-      notificationPreferences: insertUser.notificationPreferences || {
-        channels: [NotificationChannel.IN_APP],
-        taskAssignment: true,
-        taskStatusUpdate: true,
-        taskCompletion: true,
-        taskDueSoon: true,
-        systemUpdates: true
-      }
-    };
-    this.users.set(id, user);
-    return user;
-  }
-
-  async getAllUsers(): Promise<User[]> {
-    return Array.from(this.users.values());
-  }
-
-  async getUserNotificationPreferences(userId: number): Promise<any[]> {
-    const user = this.users.get(userId);
-    if (!user || !user.notificationPreferences) {
-      // Return default preferences if none are set
-      return [
-        {
-          channel: NotificationChannel.EMAIL,
-          enabled: true,
-          events: {
-            taskAssigned: true,
-            taskUpdated: true,
-            taskCompleted: true,
-            dueDateReminder: true,
-            mentions: true
-          }
-        },
-        {
-          channel: NotificationChannel.IN_APP,
-          enabled: true,
-          events: {
-            taskAssigned: true,
-            taskUpdated: true,
-            taskCompleted: true,
-            dueDateReminder: true,
-            mentions: true
-          }
-        }
-      ];
-    }
-    return user.notificationPreferences.channels || [];
-  }
-
-  async saveUserNotificationPreferences(userId: number, preferences: any[]): Promise<boolean> {
-    const user = this.users.get(userId);
-    if (!user) {
-      return false;
-    }
-    if (!user.notificationPreferences) {
-      user.notificationPreferences = {
-        channels: preferences,
-        taskAssignment: true,
-        taskStatusUpdate: true,
-        taskCompletion: true,
-        taskDueSoon: true,
-        systemUpdates: true
-      };
-    } else {
-      user.notificationPreferences.channels = preferences;
-    }
-    this.users.set(userId, user);
-    return true;
-  }
-  
-  async updateUserNotificationPreferences(userId: number, preferences: any): Promise<boolean> {
-    const user = this.users.get(userId);
-    if (!user) return false;
-    
-    // Update the user's notification preferences
-    user.notificationPreferences = {
-      ...user.notificationPreferences,
-      ...preferences
-    };
-    
-    this.users.set(userId, user);
-    return true;
-  }
-
-  // Task operations
-  async getTask(id: number): Promise<Task | undefined> {
-    return this.tasks.get(id);
-  }
-
-  async createTask(insertTask: InsertTask): Promise<Task> {
-    const id = this.taskCurrentId++;
-    const now = new Date();
-    const task: Task = {
-      ...insertTask,
-      id,
-      createdAt: now,
-      status: insertTask.status || 'not_started',
-      priority: insertTask.priority || 'medium',
-      description: insertTask.description || null,
-      dueDate: insertTask.dueDate || null,
-      assignedToId: insertTask.assignedToId || null,
-      // New fields for recurring tasks
-      isRecurring: insertTask.isRecurring || false,
-      recurringPattern: insertTask.recurringPattern || 'none',
-      recurringEndDate: insertTask.recurringEndDate || null,
-      parentTaskId: insertTask.parentTaskId || null,
-      // Color coding for visual prioritization
-      colorCode: insertTask.colorCode || 'default',
-    };
-    
-    this.tasks.set(id, task);
-    
-    // Create notification if task is assigned to someone
-    if (task.assignedToId && task.assignedToId !== task.createdById) {
-      const creator = this.users.get(task.createdById);
-      if (creator) {
-        this.createNotification({
-          message: `${creator.name} assigned you a new task: ${task.title}`,
-          userId: task.assignedToId,
-          taskId: task.id,
-          read: false
-        });
-      }
-    }
-    
-    return task;
-  }
-
-  async updateTask(id: number, updateData: UpdateTask): Promise<Task | undefined> {
-    const task = this.tasks.get(id);
-    if (!task) return undefined;
-    
-    const prevAssignedToId = task.assignedToId;
-    
-    const updatedTask: Task = {
-      ...task,
-      ...updateData,
-    };
-    
-    this.tasks.set(id, updatedTask);
-    
-    // Create notification if task assignee has changed
-    if (updateData.assignedToId && 
-        updateData.assignedToId !== prevAssignedToId && 
-        updateData.assignedToId !== task.createdById) {
-      const creator = this.users.get(task.createdById);
-      if (creator) {
-        this.createNotification({
-          message: `${creator.name} assigned you a task: ${task.title}`,
-          userId: updateData.assignedToId,
-          taskId: task.id,
-          read: false
-        });
-      }
-    }
-    
-    return updatedTask;
-  }
-
-  async deleteTask(id: number): Promise<boolean> {
-    return this.tasks.delete(id);
-  }
-
-  async getAllTasks(): Promise<Task[]> {
-    return Array.from(this.tasks.values());
-  }
-
-  async getTasksByAssignee(userId: number): Promise<Task[]> {
-    return Array.from(this.tasks.values()).filter(
-      (task) => task.assignedToId === userId
-    );
-  }
-
-  async getTasksByCreator(userId: number): Promise<Task[]> {
-    return Array.from(this.tasks.values()).filter(
-      (task) => task.createdById === userId
-    );
-  }
-
-  async getOverdueTasks(userId: number): Promise<Task[]> {
-    const now = new Date();
-    return Array.from(this.tasks.values()).filter(
-      (task) => 
-        (task.assignedToId === userId || task.createdById === userId) && 
-        task.dueDate && 
-        new Date(task.dueDate) < now
-    );
-  }
-
-  async searchTasks(query: string, filters?: TaskFilters): Promise<Task[]> {
-    let filteredTasks = Array.from(this.tasks.values());
-    
-    // Apply text search
-    if (query) {
-      const lowerQuery = query.toLowerCase();
-      filteredTasks = filteredTasks.filter(
-        task => 
-          task.title.toLowerCase().includes(lowerQuery) || 
-          (task.description && task.description.toLowerCase().includes(lowerQuery))
-      );
-    }
-    
-    // Apply filters if provided
-    if (filters) {
-      if (filters.status && filters.status.length > 0) {
-        filteredTasks = filteredTasks.filter(task => filters.status!.includes(task.status));
-      }
-      
-      if (filters.priority && filters.priority.length > 0) {
-        filteredTasks = filteredTasks.filter(task => filters.priority!.includes(task.priority));
-      }
-      
-      if (filters.dueDate) {
-        const filterDate = new Date(filters.dueDate);
-        filteredTasks = filteredTasks.filter(task => 
-          task.dueDate && 
-          new Date(task.dueDate).toDateString() === filterDate.toDateString()
-        );
-      }
-      
-      if (filters.assignedToId !== undefined) {
-        filteredTasks = filteredTasks.filter(task => task.assignedToId === filters.assignedToId);
-      }
-      
-      if (filters.createdById !== undefined) {
-        filteredTasks = filteredTasks.filter(task => task.createdById === filters.createdById);
-      }
-    }
-    
-    return filteredTasks;
-  }
-
-  async getRecurringTasks(): Promise<Task[]> {
-    // Filter tasks to get only recurring ones
-    return Array.from(this.tasks.values())
-      .filter(task => task.isRecurring === true);
-  }
-
-  // Notification operations
-  async createNotification(insertNotification: InsertNotification): Promise<Notification> {
-    const id = this.notificationCurrentId++;
-    const now = new Date();
-    const notification: Notification = {
-      ...insertNotification,
-      id,
-      createdAt: now,
-      taskId: insertNotification.taskId || null,
-      read: insertNotification.read !== undefined ? insertNotification.read : false,
-    };
-    
-    this.notifications.set(id, notification);
-    return notification;
-  }
-
-  async getNotificationsByUser(userId: number): Promise<Notification[]> {
-    return Array.from(this.notifications.values())
-      .filter(notification => notification.userId === userId)
-      .sort((a, b) => Number(b.createdAt) - Number(a.createdAt));
-  }
-
-  async markNotificationAsRead(id: number): Promise<boolean> {
-    const notification = this.notifications.get(id);
-    if (!notification) return false;
-    
-    notification.read = true;
-    this.notifications.set(id, notification);
-    return true;
-  }
-
-  // Audit log operations
-  async createAuditLog(insertLog: InsertAuditLog): Promise<AuditLog> {
-    const id = this.auditLogCurrentId++;
-    const now = new Date();
-    const log: AuditLog = {
-      ...insertLog,
-      id,
-      timestamp: now,
-      details: insertLog.details || null
-    };
-    
-    this.auditLogs.set(id, log);
-    return log;
-  }
-
-  async getAuditLogs(entityType?: string, entityId?: number, userId?: number): Promise<AuditLog[]> {
-    let logs = Array.from(this.auditLogs.values());
-    
-    if (entityType) {
-      logs = logs.filter(log => log.entityType === entityType);
-    }
-    
-    if (entityId) {
-      logs = logs.filter(log => log.entityId === entityId);
-    }
-    
-    if (userId) {
-      logs = logs.filter(log => log.userId === userId);
-    }
-    
-    // Sort by timestamp, most recent first
-    return logs.sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
-  }
-  
-  // Task mood reactions operations
-  async createTaskMoodReaction(moodReaction: InsertTaskMoodReaction): Promise<TaskMoodReaction> {
-    const id = this.moodReactionCurrentId++;
-    const now = new Date();
-    const reaction: TaskMoodReaction = {
-      ...moodReaction,
-      id,
-      createdAt: now,
-      comment: moodReaction.comment || null,
-    };
-    
-    this.taskMoodReactions.set(id, reaction);
-    return reaction;
-  }
-  
-  async getTaskMoodReactions(taskId: number): Promise<TaskMoodReaction[]> {
-    return Array.from(this.taskMoodReactions.values())
-      .filter(reaction => reaction.taskId === taskId)
-      .sort((a, b) => Number(b.createdAt) - Number(a.createdAt)); // Sort by newest first
-  }
-  
-  async getUserMoodReactions(userId: number): Promise<TaskMoodReaction[]> {
-    return Array.from(this.taskMoodReactions.values())
-      .filter(reaction => reaction.userId === userId)
-      .sort((a, b) => Number(b.createdAt) - Number(a.createdAt)); // Sort by newest first
-  }
-
-  // Recurring task operations
-  async createRecurringTaskInstances(task: Task): Promise<Task[]> {
-    // Only create recurring instances for tasks that are set as recurring
-    if (!task.isRecurring || task.recurringPattern === RecurringPattern.NONE) {
-      return [];
-    }
-    
-    const recurringEndDate = task.recurringEndDate || null;
-    if (!task.dueDate || (recurringEndDate && new Date(task.dueDate) > new Date(recurringEndDate))) {
-      return [];
-    }
-    
-    const createdTasks: Task[] = [];
-    const startDate = new Date(task.dueDate);
-    const endDate = recurringEndDate ? new Date(recurringEndDate) : new Date(startDate.getTime() + (90 * 24 * 60 * 60 * 1000)); // Default to 90 days
-    
-    let currentDate = new Date(startDate);
-    
-    // Advance to the next occurrence
-    switch (task.recurringPattern) {
-      case RecurringPattern.DAILY:
-        currentDate.setDate(currentDate.getDate() + 1);
-        break;
-      case RecurringPattern.WEEKLY:
-        currentDate.setDate(currentDate.getDate() + 7);
-        break;
-      case RecurringPattern.MONTHLY:
-        currentDate.setMonth(currentDate.getMonth() + 1);
-        break;
-    }
-    
-    // Create recurring instances until end date
-    while (currentDate <= endDate) {
-      const newTaskData: InsertTask = {
-        title: task.title,
-        description: task.description,
-        status: "not_started", // Always start as not started
-        priority: task.priority,
-        dueDate: new Date(currentDate),
-        createdById: task.createdById,
-        assignedToId: task.assignedToId,
-        isRecurring: false, // Child tasks are not recurring themselves
-        recurringPattern: RecurringPattern.NONE,
-        parentTaskId: task.id,
-        colorCode: TaskColor.BLUE // Default to blue for consistency
-      };
-      
-      const newTask = await this.createTask(newTaskData);
-      createdTasks.push(newTask);
-      
-      // Advance to the next occurrence
-      switch (task.recurringPattern) {
-        case RecurringPattern.DAILY:
-          currentDate.setDate(currentDate.getDate() + 1);
-          break;
-        case RecurringPattern.WEEKLY:
-          currentDate.setDate(currentDate.getDate() + 7);
-          break;
-        case RecurringPattern.MONTHLY:
-          currentDate.setMonth(currentDate.getMonth() + 1);
-          break;
-      }
-    }
-    
-    return createdTasks;
-  }
 }
 
-// Create a DatabaseStorage implementation for PostgreSQL
+// Database storage class implementation
 class DatabaseStorage implements IStorage {
-  db: any;
-  sessionStore: any;
-
-  constructor() {
-    if (!process.env.DATABASE_URL) {
-      console.error('DATABASE_URL environment variable is not set!');
-      throw new Error('DATABASE_URL is required for database connection');
-    }
-    
-    console.log('Initializing database connection...');
+  // Database connection
+  private db = drizzle(client);
+  
+  // Add session store for authentication
+  sessionStore = new PostgresSessionStore({
+    conObject: {
+      connectionString: process.env.DATABASE_URL,
+      ssl: { rejectUnauthorized: false }
+    },
+  });
+  
+  // User operations
+  async getUser(id: number): Promise<User | undefined> {
     try {
-      this.db = drizzle(client);
-      console.log('Database connection established successfully');
+      // Try to get user with standard fields first
+      // Just get the basic user fields we know exist
+      const results = await this.db.select({
+        id: users.id,
+        username: users.username,
+        name: users.name,
+        password: users.password,
+        role: users.role,
+        lastActive: users.lastActive,
+        avatar: users.avatar,
+        notificationPreferences: users.notificationPreferences,
+        email: users.email
+      }).from(users)
+        .where(eq(users.id, id))
+        .limit(1);
       
-      // Configure PostgreSQL session store with enhanced settings
-      this.sessionStore = new PostgresSessionStore({ 
-        conObject: {
-          connectionString: process.env.DATABASE_URL,
-          ssl: { rejectUnauthorized: false }
-        },
-        tableName: 'session', // Default table name
-        createTableIfMissing: true,
-        pruneSessionInterval: 60, // minutes
-        errorLog: console.error.bind(console),
-      });
-      console.log('Session store initialized with PostgreSQL');
+      if (results.length === 0) {
+        return undefined;
+      }
+      
+      // Create a properly typed user object with default isActive value
+      const user = {
+        ...results[0],
+        isActive: true // Default to active
+      };
+      
+      return user as User;
     } catch (error) {
-      console.error('Failed to initialize database connection:', error);
+      console.error('Error getting user:', error);
+      return undefined;
+    }
+  }
+  
+  async getUserById(id: string | number): Promise<User | undefined> {
+    return this.getUser(Number(id));
+  }
+  
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    try {
+      const results = await this.db.select().from(users).where(eq(users.username, username)).limit(1);
+      return results.length > 0 ? results[0] : undefined;
+    } catch (error) {
+      console.error('Error getting user by username:', error);
+      return undefined;
+    }
+  }
+  
+  async getAllUsers(): Promise<User[]> {
+    try {
+      return await this.db.select().from(users);
+    } catch (error) {
+      console.error('Error getting all users:', error);
+      return [];
+    }
+  }
+  
+  async createUser(user: InsertUser): Promise<User> {
+    try {
+      const result = await this.db.insert(users).values(user).returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating user:', error);
       throw error;
     }
   }
-
-  // User operations
-  async getUser(id: number): Promise<User | undefined> {
-    const result = await this.db.select().from(users).where(eq(users.id, id)).limit(1);
-    return result[0];
-  }
-
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    const result = await this.db.select().from(users).where(eq(users.username, username)).limit(1);
-    return result[0];
-  }
-
-  async createUser(user: InsertUser): Promise<User> {
-    const result = await this.db.insert(users).values(user).returning();
-    return result[0];
-  }
-
-  async getAllUsers(): Promise<User[]> {
-    return await this.db.select().from(users);
-  }
   
-  async getUserNotificationPreferences(userId: number): Promise<any[]> {
+  async updateUser(id: string | number, userData: Partial<User>): Promise<User | undefined> {
+    const userId = Number(id);
     try {
-      console.log(`Getting notification preferences for user ID: ${userId}`);
-      
-      // Direct query to get user with explicit selection of notificationPreferences field
-      const result = await this.db.select({notificationPreferences: users.notificationPreferences})
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-      
-      // Log what we found for debugging
-      console.log(`User notification preferences query result:`, JSON.stringify(result));
-      
-      const user = result[0];
-      if (!user || !user.notificationPreferences) {
-        console.log(`No notification preferences found for user ${userId}, returning defaults`);
-        // Return default preferences if none are set
-        return [
-          {
-            channel: NotificationChannel.EMAIL,
-            enabled: true,
-            events: {
-              taskAssigned: true,
-              taskUpdated: true,
-              taskCompleted: true,
-              dueDateReminder: true,
-              mentions: true
-            }
-          },
-          {
-            channel: NotificationChannel.IN_APP,
-            enabled: true,
-            events: {
-              taskAssigned: true,
-              taskUpdated: true,
-              taskCompleted: true,
-              dueDateReminder: true,
-              mentions: true
-            }
-          }
-        ];
-      }
-      
-      // Check if channels exists, otherwise return the notification preferences as a whole 
-      // (some database structures might store it differently)
-      const channels = user.notificationPreferences.channels;
-      
-      if (Array.isArray(channels)) {
-        console.log(`Returning ${channels.length} notification channels for user ${userId}`);
-        return channels;
-      } else if (typeof user.notificationPreferences === 'object') {
-        // If no channels array but we have preferences object, construct a compatible format
-        console.log(`Converting notification preferences to compatible format for user ${userId}`);
-        return [
-          {
-            channel: NotificationChannel.EMAIL,
-            enabled: user.notificationPreferences.taskAssignment || true,
-            events: {
-              taskAssigned: user.notificationPreferences.taskAssignment || true,
-              taskUpdated: user.notificationPreferences.taskStatusUpdate || true,
-              taskCompleted: user.notificationPreferences.taskCompletion || true,
-              dueDateReminder: user.notificationPreferences.taskDueSoon || true,
-              mentions: true
-            }
-          },
-          {
-            channel: NotificationChannel.IN_APP,
-            enabled: true,
-            events: {
-              taskAssigned: user.notificationPreferences.taskAssignment || true,
-              taskUpdated: user.notificationPreferences.taskStatusUpdate || true,
-              taskCompleted: user.notificationPreferences.taskCompletion || true,
-              dueDateReminder: user.notificationPreferences.taskDueSoon || true,
-              mentions: true
-            }
-          }
-        ];
-      }
-      
-      // Fallback to empty array
-      console.log(`No valid notification preferences structure found for user ${userId}`);
-      return [];
-    } catch (error) {
-      console.error('Error getting user notification preferences:', error);
-      return [];
-    }
-  }
-
-  async saveUserNotificationPreferences(userId: number, preferences: any[]): Promise<boolean> {
-    try {
-      console.log(`Saving notification preferences for user ID: ${userId}`);
-      console.log(`Preferences to save:`, JSON.stringify(preferences));
-      
-      // First get current preferences to properly merge them
+      // First, get the user to make sure they exist
       const user = await this.getUser(userId);
-      if (!user) {
-        console.log(`User ${userId} not found, cannot save preferences`);
-        return false;
-      }
+      if (!user) return undefined;
       
-      // Prepare the updated notification preferences
-      let updatedPrefs;
-      if (!user.notificationPreferences) {
-        // If no existing preferences, create a new structured object
-        console.log(`Creating new preferences structure for user ${userId}`);
-        updatedPrefs = {
-          channels: preferences,
-          taskAssignment: true,
-          taskStatusUpdate: true,
-          taskCompletion: true,
-          taskDueSoon: true,
-          systemUpdates: true
-        };
-      } else {
-        // Merge with existing preferences
-        console.log(`Merging with existing preferences for user ${userId}`);
-        updatedPrefs = {
-          ...user.notificationPreferences,
-          channels: preferences
-        };
-      }
+      // Remove id from userData to prevent id updates
+      const { id: _, ...updateData } = userData as any;
       
-      console.log(`Final preferences structure to save:`, JSON.stringify(updatedPrefs));
-      
-      // Update the user with the new preferences
-      const result = await this.db.update(users)
-        .set({ notificationPreferences: updatedPrefs })
+      // Update the user in the database
+      await this.db
+        .update(users)
+        .set(updateData)
         .where(eq(users.id, userId));
       
-      const success = result.count > 0;
-      console.log(`Preferences ${success ? 'successfully saved' : 'failed to save'} for user ${userId}`);
-      return success;
+      // Create audit log for the update
+      await this.createAuditLog({
+        action: AuditAction.UPDATED,
+        entityType: AuditEntity.USER,
+        entityId: userId,
+        userId: userId,
+        details: JSON.stringify({ updated: Object.keys(updateData) })
+      });
+      
+      // Get the updated user
+      return this.getUser(userId);
     } catch (error) {
-      console.error('Error saving user notification preferences:', error);
-      return false;
+      console.error('Error updating user:', error);
+      return undefined;
     }
   }
   
-  async updateUserNotificationPreferences(userId: number, preferences: any): Promise<boolean> {
+  async deleteUser(id: string | number): Promise<boolean> {
+    const userId = Number(id);
     try {
+      // First, get the user to make sure they exist
       const user = await this.getUser(userId);
       if (!user) return false;
       
-      // Update notification preferences
-      const updatedPreferences = {
-        ...user.notificationPreferences,
-        ...preferences
-      };
+      // Delete the user from the database
+      await this.db
+        .delete(users)
+        .where(eq(users.id, userId));
       
-      // Update the user in the database
-      const result = await this.db.update(users)
-        .set({ notificationPreferences: updatedPreferences })
-        .where(eq(users.id, userId))
-        .returning();
+      // Create audit log for the deletion
+      await this.createAuditLog({
+        action: AuditAction.DELETED,
+        entityType: AuditEntity.USER,
+        entityId: userId,
+        userId: userId,
+        details: JSON.stringify({ deleted: true })
+      });
       
-      return result.length > 0;
+      return true;
     } catch (error) {
-      console.error('Error updating user notification preferences:', error);
+      console.error('Error deleting user:', error);
       return false;
     }
   }
 
   // Task operations
   async getTask(id: number): Promise<Task | undefined> {
-    const result = await this.db.select().from(tasks).where(eq(tasks.id, id)).limit(1);
-    return result[0];
-  }
+    try {
+      // Validate ID to prevent NaN errors
+      if (!id || isNaN(id) || id <= 0) {
+        console.error(`Invalid task ID: ${id}`);
+        return undefined;
+      }
 
-  async createTask(task: InsertTask): Promise<Task> {
-    const result = await this.db.insert(tasks).values({
-      ...task,
-      createdAt: new Date()
-    }).returning();
-    return result[0];
+      // Ensure ID is an integer
+      const taskId = Math.floor(Number(id));
+      const results = await this.db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1);
+      return results.length > 0 ? results[0] : undefined;
+    } catch (error) {
+      console.error('Error getting task:', error);
+      return undefined;
+    }
   }
-
-  async updateTask(id: number, task: UpdateTask): Promise<Task | undefined> {
-    const result = await this.db.update(tasks)
-      .set(task)
-      .where(eq(tasks.id, id))
-      .returning();
-    return result[0];
-  }
-
-  async deleteTask(id: number): Promise<boolean> {
-    const result = await this.db.delete(tasks).where(eq(tasks.id, id));
-    return !!result;
-  }
-
+  
   async getAllTasks(): Promise<Task[]> {
     try {
       console.log('Executing getAllTasks database query...');
@@ -769,101 +247,64 @@ class DatabaseStorage implements IStorage {
       console.log(`getAllTasks query successful, retrieved ${result.length} tasks`);
       return result;
     } catch (error) {
-      console.error('Database error in getAllTasks:', error);
-      // Return an empty array to prevent complete failure
-      // This allows the application to degrade gracefully
+      console.error('Error getting all tasks:', error);
       return [];
     }
   }
-
+  
   async getTasksByAssignee(userId: number): Promise<Task[]> {
-    return await this.db.select().from(tasks).where(eq(tasks.assignedToId, userId));
+    try {
+      const result = await this.db.select().from(tasks);
+      return result.filter(task => task.assignedToId === userId);
+    } catch (error) {
+      console.error('Error getting tasks by assignee:', error);
+      return [];
+    }
   }
-
+  
   async getTasksByCreator(userId: number): Promise<Task[]> {
-    return await this.db.select().from(tasks).where(eq(tasks.createdById, userId));
+    try {
+      const result = await this.db.select().from(tasks);
+      return result.filter(task => task.createdById === userId);
+    } catch (error) {
+      console.error('Error getting tasks by creator:', error);
+      return [];
+    }
   }
-
+  
   async getOverdueTasks(userId: number): Promise<Task[]> {
     try {
-      // Validate input
-      if (!userId || typeof userId !== 'number') {
-        console.error(`Invalid userId provided to getOverdueTasks: ${userId}`);
+      // Validate userId
+      if (!userId || isNaN(userId) || userId <= 0) {
+        console.error(`Invalid user ID for overdue tasks: ${userId}`);
         return [];
       }
 
       const now = new Date();
-      console.log(`Getting overdue tasks for user ${userId}, current date: ${now.toISOString()}`);
+      console.log(`Fetching overdue tasks for user ${userId}, current date: ${now.toISOString()}`);
       
-      // First attempt to get relevant tasks by direct database queries
-      let userTasks = [];
-      try {
-        // Try to get tasks directly assigned to or created by this user to reduce processing
-        const assignedTasks = await this.getTasksByAssignee(userId);
-        const createdTasks = await this.getTasksByCreator(userId);
+      // Get tasks assigned to or created by this user
+      const result = await this.db.select().from(tasks);
+      
+      // Filter for overdue and incomplete tasks
+      const overdueTasks = result.filter(task => {
+        // Skip tasks without due date
+        if (!task.dueDate) return false;
         
-        // Combine tasks, removing duplicates (tasks both created by and assigned to user)
-        const taskMap = new Map();
-        [...assignedTasks, ...createdTasks].forEach(task => {
-          taskMap.set(task.id, task);
-        });
-        userTasks = Array.from(taskMap.values());
-        console.log(`Found ${userTasks.length} total tasks for user ${userId}`);
-      } catch (dbError) {
-        console.error('Failed to fetch tasks by user ID directly, falling back to general task list:', dbError);
-        // Fallback to all tasks if specific queries fail
-        userTasks = await this.getAllTasks();
-      }
-
-      // Then filter for overdue tasks
-      console.log(`Filtering ${userTasks.length} tasks for overdue status...`);
-      const overdueTasks = userTasks.filter(task => {
+        // Task must be assigned to or created by user
+        const isRelevantToUser = 
+          (task.assignedToId === userId || task.createdById === userId);
+        if (!isRelevantToUser) return false;
+        
+        // Task must not be completed
+        if (task.status === 'completed') return false;
+        
+        // Check if due date is in the past
         try {
-          // Skip invalid tasks
-          if (!task || typeof task !== 'object') {
-            console.log('Skipping invalid task object:', task);
-            return false;
-          }
-          
-          // Check if this task is relevant to this user
-          const isUserRelevant = task.assignedToId === userId || task.createdById === userId;
-          if (!isUserRelevant) return false;
-          
-          // Check task status first (quick rejection)
-          const isNotCompleted = task.status !== 'completed';
-          if (!isNotCompleted) return false;
-          
-          // Check if it has a due date that's in the past
-          const hasDueDate = task.dueDate !== null && task.dueDate !== undefined;
-          if (!hasDueDate) return false;
-          
-          // Safely parse the due date
-          try {
-            let dueDate;
-            if (typeof task.dueDate === 'string') {
-              dueDate = new Date(task.dueDate);
-            } else if (task.dueDate instanceof Date) {
-              dueDate = task.dueDate;
-            } else {
-              console.log(`Task ${task.id}: Unexpected dueDate format: ${typeof task.dueDate}`);
-              return false;
-            }
-            
-            // Check for invalid date
-            if (isNaN(dueDate.getTime())) {
-              console.log(`Task ${task.id}: Invalid date value: ${task.dueDate}`);
-              return false;
-            }
-            
-            // Finally check if due date is in the past
-            const isDueInPast = dueDate < now;
-            return isDueInPast;
-          } catch (dateError) {
-            console.error(`Error parsing date for task ${task.id}:`, dateError);
-            return false;
-          }
+          const dueDate = new Date(task.dueDate);
+          return dueDate < now;
         } catch (err) {
-          console.error(`Error filtering task ${task?.id || 'unknown'}:`, err);
+          console.error(`Error parsing due date for task ${task.id}:`, err);
           return false;
         }
       });
@@ -871,147 +312,114 @@ class DatabaseStorage implements IStorage {
       console.log(`Found ${overdueTasks.length} overdue tasks for user ${userId}`);
       return overdueTasks;
     } catch (error) {
-      console.error('Error in getOverdueTasks:', error);
-      // Return empty array instead of throwing to prevent 500 errors
+      console.error('Error getting overdue tasks:', error);
       return [];
     }
   }
-
+  
   async searchTasks(query: string, filters?: TaskFilters): Promise<Task[]> {
-    // Implementation would use more complex SQL for filtering
-    // This is a simplified version
-    const allTasks = await this.getAllTasks();
-    
-    let filteredTasks = allTasks;
-    
-    // Apply text search
-    if (query) {
-      const lowerQuery = query.toLowerCase();
-      filteredTasks = filteredTasks.filter(
-        task => 
-          task.title.toLowerCase().includes(lowerQuery) || 
-          (task.description && task.description.toLowerCase().includes(lowerQuery))
-      );
-    }
-    
-    // Apply filters if provided
-    if (filters) {
-      if (filters.status && filters.status.length > 0) {
-        filteredTasks = filteredTasks.filter(task => filters.status!.includes(task.status));
-      }
+    try {
+      // Get all tasks and filter in memory
+      const allTasks = await this.db.select().from(tasks);
       
-      if (filters.priority && filters.priority.length > 0) {
-        filteredTasks = filteredTasks.filter(task => filters.priority!.includes(task.priority));
-      }
+      let filteredTasks = [...allTasks];
       
-      if (filters.dueDate) {
-        const filterDate = new Date(filters.dueDate);
-        filteredTasks = filteredTasks.filter(task => 
-          task.dueDate && 
-          new Date(task.dueDate).toDateString() === filterDate.toDateString()
+      // Apply text search
+      if (query) {
+        const lowerQuery = query.toLowerCase();
+        filteredTasks = filteredTasks.filter(
+          task => 
+            task.title.toLowerCase().includes(lowerQuery) || 
+            (task.description && task.description.toLowerCase().includes(lowerQuery))
         );
       }
       
-      if (filters.assignedToId !== undefined) {
-        filteredTasks = filteredTasks.filter(task => task.assignedToId === filters.assignedToId);
+      // Apply additional filters if provided
+      if (filters) {
+        if (filters.status && filters.status.length > 0) {
+          filteredTasks = filteredTasks.filter(task => 
+            filters.status!.includes(task.status)
+          );
+        }
+        
+        if (filters.priority && filters.priority.length > 0) {
+          filteredTasks = filteredTasks.filter(task => 
+            filters.priority!.includes(task.priority)
+          );
+        }
+        
+        if (filters.dueDate) {
+          const dueDate = new Date(filters.dueDate);
+          filteredTasks = filteredTasks.filter(task => 
+            task.dueDate && new Date(task.dueDate) <= dueDate
+          );
+        }
+        
+        if (filters.assignedToId !== undefined) {
+          filteredTasks = filteredTasks.filter(task => 
+            task.assignedToId === filters.assignedToId
+          );
+        }
+        
+        if (filters.createdById !== undefined) {
+          filteredTasks = filteredTasks.filter(task => 
+            task.createdById === filters.createdById
+          );
+        }
       }
       
-      if (filters.createdById !== undefined) {
-        filteredTasks = filteredTasks.filter(task => task.createdById === filters.createdById);
-      }
-    }
-    
-    return filteredTasks;
-  }
-
-  async getRecurringTasks(): Promise<Task[]> {
-    try {
-      // Use a direct database query to get recurring tasks efficiently
-      return await this.db.select().from(tasks)
-        .where(eq(tasks.isRecurring, true));
+      return filteredTasks;
     } catch (error) {
-      console.error('Error fetching recurring tasks:', error);
+      console.error('Error searching tasks:', error);
       return [];
     }
   }
-
-  // Notification operations
-  async createNotification(notification: InsertNotification): Promise<Notification> {
-    const result = await this.db.insert(notifications).values({
-      ...notification,
-      createdAt: new Date()
-    }).returning();
-    return result[0];
-  }
-
-  async getNotificationsByUser(userId: number): Promise<Notification[]> {
-    return await this.db.select().from(notifications)
-      .where(eq(notifications.userId, userId))
-      .orderBy(desc(notifications.createdAt));
-  }
-
-  async markNotificationAsRead(id: number): Promise<boolean> {
-    const result = await this.db.update(notifications)
-      .set({ read: true })
-      .where(eq(notifications.id, id));
-    return !!result;
-  }
-
-  // Audit log operations
-  async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
-    const result = await this.db.insert(auditLogs).values({
-      ...log,
-      timestamp: new Date()
-    }).returning();
-    return result[0];
-  }
-
-  async getAuditLogs(entityType?: string, entityId?: number, userId?: number): Promise<AuditLog[]> {
-    let query = this.db.select().from(auditLogs);
-    
-    // Build query with filters
-    if (entityType) {
-      query = query.where(eq(auditLogs.entityType, entityType));
+  
+  async getRecurringTasks(): Promise<Task[]> {
+    try {
+      const result = await this.db.select().from(tasks);
+      return result.filter(task => 
+        task.isRecurring && task.recurringPattern !== RecurringPattern.NONE
+      );
+    } catch (error) {
+      console.error('Error getting recurring tasks:', error);
+      return [];
     }
-    
-    if (entityId) {
-      query = query.where(eq(auditLogs.entityId, entityId));
-    }
-    
-    if (userId) {
-      query = query.where(eq(auditLogs.userId, userId));
-    }
-    
-    // Sort by timestamp, most recent first
-    return await query.orderBy(desc(auditLogs.timestamp));
   }
   
-  // Task mood reactions operations
-  async createTaskMoodReaction(moodReaction: InsertTaskMoodReaction): Promise<TaskMoodReaction> {
-    const result = await this.db.insert(taskMoodReactions).values({
-      ...moodReaction,
-      createdAt: new Date(),
-      comment: moodReaction.comment || null
-    }).returning();
-    
-    return result[0];
+  async createTask(task: InsertTask): Promise<Task> {
+    try {
+      const result = await this.db.insert(tasks).values(task).returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating task:', error);
+      throw error;
+    }
   }
   
-  async getTaskMoodReactions(taskId: number): Promise<TaskMoodReaction[]> {
-    return await this.db.select().from(taskMoodReactions)
-      .where(eq(taskMoodReactions.taskId, taskId))
-      .orderBy(desc(taskMoodReactions.createdAt));
+  async updateTask(id: number, task: UpdateTask): Promise<Task | undefined> {
+    try {
+      await this.db.update(tasks)
+        .set(task)
+        .where(eq(tasks.id, id));
+      return this.getTask(id);
+    } catch (error) {
+      console.error('Error updating task:', error);
+      return undefined;
+    }
   }
   
-  async getUserMoodReactions(userId: number): Promise<TaskMoodReaction[]> {
-    return await this.db.select().from(taskMoodReactions)
-      .where(eq(taskMoodReactions.userId, userId))
-      .orderBy(desc(taskMoodReactions.createdAt));
+  async deleteTask(id: number): Promise<boolean> {
+    try {
+      await this.db.delete(tasks).where(eq(tasks.id, id));
+      return true;
+    } catch (error) {
+      console.error('Error deleting task:', error);
+      return false;
+    }
   }
-
-  // Recurring task operations
+  
   async createRecurringTaskInstances(task: Task): Promise<Task[]> {
-    // Only create recurring instances for tasks that are set as recurring
     if (!task.isRecurring || task.recurringPattern === RecurringPattern.NONE) {
       return [];
     }
@@ -1021,43 +429,12 @@ class DatabaseStorage implements IStorage {
       return [];
     }
     
-    const createdTasks: Task[] = [];
-    const startDate = new Date(task.dueDate);
-    const endDate = recurringEndDate ? new Date(recurringEndDate) : new Date(startDate.getTime() + (90 * 24 * 60 * 60 * 1000)); // Default to 90 days
-    
-    let currentDate = new Date(startDate);
-    
-    // Advance to the next occurrence
-    switch (task.recurringPattern) {
-      case RecurringPattern.DAILY:
-        currentDate.setDate(currentDate.getDate() + 1);
-        break;
-      case RecurringPattern.WEEKLY:
-        currentDate.setDate(currentDate.getDate() + 7);
-        break;
-      case RecurringPattern.MONTHLY:
-        currentDate.setMonth(currentDate.getMonth() + 1);
-        break;
-    }
-    
-    // Create recurring instances until end date
-    while (currentDate <= endDate) {
-      const newTaskData: InsertTask = {
-        title: task.title,
-        description: task.description,
-        status: "not_started", // Always start as not started
-        priority: task.priority,
-        dueDate: new Date(currentDate),
-        createdById: task.createdById,
-        assignedToId: task.assignedToId,
-        isRecurring: false, // Child tasks are not recurring themselves
-        recurringPattern: RecurringPattern.NONE,
-        parentTaskId: task.id,
-        colorCode: TaskColor.BLUE // Default to blue for consistency
-      };
+    try {
+      const createdTasks: Task[] = [];
+      const startDate = new Date(task.dueDate);
+      const endDate = recurringEndDate ? new Date(recurringEndDate) : new Date(startDate.getTime() + (90 * 24 * 60 * 60 * 1000)); // Default to 90 days
       
-      const newTask = await this.createTask(newTaskData);
-      createdTasks.push(newTask);
+      let currentDate = new Date(startDate);
       
       // Advance to the next occurrence
       switch (task.recurringPattern) {
@@ -1071,21 +448,179 @@ class DatabaseStorage implements IStorage {
           currentDate.setMonth(currentDate.getMonth() + 1);
           break;
       }
+      
+      // Create recurring instances until end date
+      while (currentDate <= endDate) {
+        const newTaskData: InsertTask = {
+          title: task.title,
+          description: task.description,
+          status: "not_started",
+          priority: task.priority,
+          dueDate: new Date(currentDate),
+          createdById: task.createdById,
+          assignedToId: task.assignedToId,
+          isRecurring: false,
+          recurringPattern: RecurringPattern.NONE,
+          parentTaskId: task.id,
+          colorCode: TaskColor.BLUE
+        };
+        
+        const newTask = await this.createTask(newTaskData);
+        createdTasks.push(newTask);
+        
+        // Advance to the next occurrence
+        switch (task.recurringPattern) {
+          case RecurringPattern.DAILY:
+            currentDate.setDate(currentDate.getDate() + 1);
+            break;
+          case RecurringPattern.WEEKLY:
+            currentDate.setDate(currentDate.getDate() + 7);
+            break;
+          case RecurringPattern.MONTHLY:
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            break;
+        }
+      }
+      
+      return createdTasks;
+    } catch (error) {
+      console.error('Error creating recurring task instances:', error);
+      return [];
     }
-    
-    return createdTasks;
+  }
+  
+  // Notification operations
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    try {
+      const result = await this.db.insert(notifications).values(notification).returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating notification:', error);
+      throw error;
+    }
+  }
+  
+  async getNotificationsByUser(userId: number): Promise<Notification[]> {
+    try {
+      const results = await this.db.select().from(notifications);
+      return results
+        .filter(notification => notification.userId === userId)
+        .sort((a, b) => {
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+    } catch (error) {
+      console.error('Error getting notifications by user:', error);
+      return [];
+    }
+  }
+  
+  async markNotificationAsRead(id: number): Promise<boolean> {
+    try {
+      await this.db.update(notifications)
+        .set({ read: true })
+        .where(eq(notifications.id, id));
+      return true;
+    } catch (error) {
+      console.error('Error marking notification as read:', error);
+      return false;
+    }
+  }
+  
+  // Audit logging operations
+  async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
+    try {
+      const result = await this.db.insert(auditLogs).values(log).returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating audit log:', error);
+      throw error;
+    }
+  }
+  
+  async getAuditLogs(entityType?: string, entityId?: number, userId?: number): Promise<AuditLog[]> {
+    try {
+      const allLogs = await this.db.select().from(auditLogs);
+      
+      // Apply filters in memory
+      return allLogs
+        .filter(log => {
+          let match = true;
+          if (entityType) match = match && log.entityType === entityType;
+          if (entityId) match = match && log.entityId === entityId;
+          if (userId) match = match && log.userId === userId;
+          return match;
+        })
+        .sort((a, b) => {
+          // Use timestamp for audit logs since they have timestamp, not createdAt
+          return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+        });
+    } catch (error) {
+      console.error('Error getting audit logs:', error);
+      return [];
+    }
+  }
+  
+  // Task mood reactions operations
+  async createTaskMoodReaction(moodReaction: InsertTaskMoodReaction): Promise<TaskMoodReaction> {
+    try {
+      const result = await this.db.insert(taskMoodReactions).values(moodReaction).returning();
+      return result[0];
+    } catch (error) {
+      console.error('Error creating task mood reaction:', error);
+      throw error;
+    }
+  }
+  
+  async getTaskMoodReactions(taskId: number): Promise<TaskMoodReaction[]> {
+    try {
+      const results = await this.db.select().from(taskMoodReactions);
+      return results
+        .filter(reaction => reaction.taskId === taskId)
+        .sort((a, b) => {
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+    } catch (error) {
+      console.error('Error getting task mood reactions:', error);
+      return [];
+    }
+  }
+  
+  async getUserMoodReactions(userId: number): Promise<TaskMoodReaction[]> {
+    try {
+      const results = await this.db.select().from(taskMoodReactions);
+      return results
+        .filter(reaction => reaction.userId === userId)
+        .sort((a, b) => {
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+    } catch (error) {
+      console.error('Error getting user mood reactions:', error);
+      return [];
+    }
+  }
+  
+  // User preferences operations
+  async getUserNotificationPreferences(userId: number): Promise<any[]> {
+    // Implementation would depend on your schema
+    return [{ channel: NotificationChannel.EMAIL, enabled: true }];
+  }
+  
+  async saveUserNotificationPreferences(userId: number, preferences: any[]): Promise<boolean> {
+    // Implementation would depend on your schema
+    return true;
+  }
+  
+  async updateUserNotificationPreferences(userId: number, preferences: any): Promise<boolean> {
+    // Implementation would depend on your schema
+    return true;
   }
 }
 
-// Choose the storage implementation based on environment
-// We will now use database storage for better persistence
+// Create an instance of DatabaseStorage
 const dbStorage = new DatabaseStorage();
 
-// Using actual users from database, no test users will be created
-console.log('Using database storage with existing users');
+// Export the storage instance
+export const storage: IStorage = dbStorage;
 
-export const storage = dbStorage;
-
-// Database storage is now being used for persistent authentication and data storage
-// To switch back to memory storage for testing, use:
-// export const storage = new MemStorage();
+// Export enums for use in other files
+export { AuditAction, AuditEntity, UserRole, RecurringPattern, TaskStatus, NotificationChannel, TaskColor, TaskMoodType };

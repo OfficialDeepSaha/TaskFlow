@@ -1,5 +1,5 @@
 import { storage } from './storage';
-import { Task, TaskStatus, UserRole, User } from '@shared/schema';
+import { Task, TaskStatus, UserRole } from '@shared/schema';
 import { differenceInDays } from 'date-fns';
 
 /**
@@ -9,16 +9,15 @@ export const analyticsHelper = {
   /**
    * Get analytics data for the specified date range
    */
-  async getAnalyticsData(startDate: string, endDate: string): Promise<any> {
-    // Cast storage to any to avoid TypeScript errors since these methods exist at runtime
-    const allTasks = await (storage as any).getAllTasks();
-    const users = await (storage as any).getAllUsers();
+  async getAnalyticsData(startDate: string, endDate: string) {
+    const allTasks = await storage.getAllTasks();
+    const users = await storage.getAllUsers();
     
     // Filter tasks within the date range (created within the period)
     const startDateTime = new Date(startDate).getTime();
     const endDateTime = new Date(endDate).getTime();
     
-    const tasksInPeriod = allTasks.filter((task: Task) => {
+    const tasksInPeriod = allTasks.filter(task => {
       const createdAt = new Date(task.createdAt || 0).getTime();
       return (createdAt >= startDateTime && createdAt <= endDateTime);
     });
@@ -51,19 +50,19 @@ export const analyticsHelper = {
    * Calculate task completion rates for each user
    * Fixed to correctly identify completed tasks
    */
-  async getUserCompletionRates(users: User[], tasks: Task[]): Promise<any[]> {
+  async getUserCompletionRates(users: any[], tasks: Task[]) {
     // Get ALL tasks from the database to ensure we have everything
     // This is crucial to make sure we count tasks that might not be in the filtered period
-    const allTasks = await (storage as any).getAllTasks();
+    const allTasks = await storage.getAllTasks();
     
     return users
-      .filter((user: User) => user.role !== UserRole.ADMIN) // Exclude admin users
-      .map((user: User) => {
+      .filter(user => user.role !== UserRole.ADMIN) // Exclude admin users
+      .map(user => {
         // Use string representation of IDs for consistent comparison
         const userId = String(user.id);
         
         // Get all tasks ever assigned to this user
-        const userTasks = allTasks.filter((task: Task) => {
+        const userTasks = allTasks.filter(task => {
           if (task.assignedToId !== undefined && task.assignedToId !== null) {
             return String(task.assignedToId) === userId;
           }
@@ -71,7 +70,7 @@ export const analyticsHelper = {
         });
         
         // Consider a task completed if its status is COMPLETED (or any equivalent)
-        const completedTasks = userTasks.filter((task: Task) => {
+        const completedTasks = userTasks.filter(task => {
           const status = String(task.status).toUpperCase();
           return status === 'COMPLETED' || status === 'DONE';
         });
@@ -95,7 +94,7 @@ export const analyticsHelper = {
   /**
    * Calculate the distribution of tasks by status
    */
-  getTaskStatusDistribution(tasks: Task[]): Array<{status: string, count: number}> {
+  getTaskStatusDistribution(tasks: Task[]) {
     const statusCounts: Record<string, number> = {};
     
     // Count tasks by status
@@ -116,7 +115,7 @@ export const analyticsHelper = {
   /**
    * Calculate task trends over the specified time period
    */
-  async getTaskTrends(startDate: string, endDate: string, allTasks: Task[]): Promise<Array<{date: string, created: number, completed: number, inProgress: number}>> {
+  async getTaskTrends(startDate: string, endDate: string, allTasks: Task[]) {
     // Generate a date range array
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -127,19 +126,19 @@ export const analyticsHelper = {
     }
     
     // Calculate metrics for each date
-    return dateRangeArray.map((date: Date) => {
+    return dateRangeArray.map(date => {
       const dateStr = date.toISOString().split('T')[0];
       const nextDay = new Date(date);
       nextDay.setDate(nextDay.getDate() + 1);
       
       // Tasks created on this date
-      const createdTasks = allTasks.filter((task: Task) => {
+      const createdTasks = allTasks.filter(task => {
         const createdDate = new Date(task.createdAt || 0);
         return createdDate >= date && createdDate < nextDay;
       });
       
       // Tasks completed on this date - use createdAt as a proxy since we don't have updatedAt
-      const completedTasksCount = allTasks.filter((task: Task) => {
+      const completedTasksCount = allTasks.filter(task => {
         // Check if task is completed
         const statusUpper = String(task.status).toUpperCase();
         const isCompleted = statusUpper === 'COMPLETED' || statusUpper === 'DONE';
@@ -152,7 +151,7 @@ export const analyticsHelper = {
       }).length;
       
       // Tasks in progress (approximation based on what we know)
-      const inProgressTasksCount = allTasks.filter((task: Task) => {
+      const inProgressTasksCount = allTasks.filter(task => {
         const statusUpper = String(task.status).toUpperCase();
         return statusUpper === 'IN_PROGRESS' || statusUpper === 'IN PROGRESS';
       }).length;
@@ -169,11 +168,11 @@ export const analyticsHelper = {
   /**
    * Calculate overdue tasks by priority
    */
-  getOverdueByPriority(tasks: Task[]): Array<{priority: string, count: number}> {
+  getOverdueByPriority(tasks: Task[]) {
     const now = new Date();
     
     // Find tasks that are overdue
-    const overdueTasks = tasks.filter((task: Task) => {
+    const overdueTasks = tasks.filter(task => {
       if (!task.dueDate) return false;
       
       // Check if task is not completed
@@ -186,7 +185,7 @@ export const analyticsHelper = {
     const priorityCounts: Record<string, number> = {};
     
     // Count overdue tasks by priority
-    overdueTasks.forEach((task: Task) => {
+    overdueTasks.forEach(task => {
       const priority = task.priority || 'medium';
       if (!priorityCounts[priority]) {
         priorityCounts[priority] = 0;
@@ -203,20 +202,18 @@ export const analyticsHelper = {
   
   /**
    * Calculate average time to complete tasks by priority
-   * This calculates the actual time taken to complete tasks, not the time between creation and due date
    */
-  getTimeToCompleteAvg(tasks: Task[]): Array<{priority: string, avgDays: number}> {
-    // We need to get all tasks to have more data for analysis
-    // This helps us track completion times more accurately
-    const allCompletedTasks = tasks.filter((task: Task) => {
+  getTimeToCompleteAvg(tasks: Task[]) {
+    // Find completed tasks
+    const completedTasks = tasks.filter(task => {
       const statusUpper = String(task.status).toUpperCase();
-      return (statusUpper === 'COMPLETED' || statusUpper === 'DONE') && task.createdAt;
+      return (statusUpper === 'COMPLETED' || statusUpper === 'DONE') && task.dueDate && task.createdAt;
     });
     
     // Group tasks by priority
     const tasksByPriority: Record<string, Task[]> = {};
     
-    allCompletedTasks.forEach((task: Task) => {
+    completedTasks.forEach(task => {
       const priority = task.priority || 'medium';
       if (!tasksByPriority[priority]) {
         tasksByPriority[priority] = [];
@@ -224,70 +221,23 @@ export const analyticsHelper = {
       tasksByPriority[priority].push(task);
     });
     
-    // Query the database for task audit logs to find real completion timestamps
-    // Since we don't have direct access to the completion timestamp (updatedAt),
-    // we'll use a reasonable approximation based on the data we have
-    
     // Calculate average days to complete for each priority
-    return Object.entries(tasksByPriority).map(([priority, priorityTasks]: [string, Task[]]) => {
+    return Object.entries(tasksByPriority).map(([priority, priorityTasks]) => {
       const totalDays = priorityTasks.reduce((sum, task) => {
-        // We'll use a combination of metrics to estimate completion time:
-        // 1. For tasks with due dates: Calculate how many days before/after the due date it was completed
-        // 2. For tasks without due dates: Use standard averages based on priority
-        
+        // Calculate days between creation and due date as our best approximation
+        const dueDate = new Date(task.dueDate!);
         const creationDate = new Date(task.createdAt!);
-        let completionDate;
         
-        // If we know the task's due date, we can use it as a reference point
-        if (task.dueDate) {
-          const dueDate = new Date(task.dueDate);
-          
-          // Tasks are typically completed around their due date
-          // Standard deviation varies by priority:
-          // - High priority: Usually completed right around due date or slightly before
-          // - Medium priority: Completed within a day or two of due date
-          // - Low priority: May drift up to several days past due date
-          
-          const priorityLower = String(task.priority).toLowerCase();
-          let daysOffset = 0;
-          
-          if (priorityLower === 'high') {
-            // High priority tasks tend to be completed on time or slightly early
-            daysOffset = -0.5; // Half day early on average
-          } else if (priorityLower === 'medium') {
-            // Medium priority tasks tend to be completed right around due date
-            daysOffset = 0.5; // Half day late on average
-          } else {
-            // Low priority tasks tend to be completed after due date
-            daysOffset = 1.5; // Day and a half late on average
-          }
-          
-          // Create an estimated completion date based on due date plus offset
-          completionDate = new Date(dueDate);
-          completionDate.setDate(completionDate.getDate() + daysOffset);
-        } else {
-          // If no due date, estimate based on priority
-          completionDate = new Date(creationDate);
-          
-          const priorityLower = String(task.priority).toLowerCase();
-          if (priorityLower === 'high') {
-            completionDate.setDate(completionDate.getDate() + 2); // 2 days for high priority
-          } else if (priorityLower === 'medium') {
-            completionDate.setDate(completionDate.getDate() + 5); // 5 days for medium priority
-          } else {
-            completionDate.setDate(completionDate.getDate() + 8); // 8 days for low priority
-          }
-        }
-        
-        // Calculate days between creation and estimated completion
-        const daysToComplete = Math.max(0.5, differenceInDays(completionDate, creationDate));
+        // Positive values mean the task was due after creation (expected)
+        // Negative values mean the task was due before creation (unusual)
+        const daysToComplete = Math.max(0, differenceInDays(dueDate, creationDate));
         
         return sum + daysToComplete;
       }, 0);
 
       return {
         priority,
-        avgDays: priorityTasks.length > 0 ? +(totalDays / priorityTasks.length).toFixed(1) : 0
+        avgDays: priorityTasks.length > 0 ? totalDays / priorityTasks.length : 0
       };
     });
   }

@@ -47,6 +47,39 @@
 --radius: 0.5rem;
   }
 
+/* Loading state handling to prevent white flashes */
+html, body { 
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  transition: opacity 0.2s ease-in-out;
+}
+
+/* Apply base background colors to prevent white flash */
+html {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* Loading state class applied during app initialization */
+.app-loading {
+  opacity: 0.6;
+}
+
+/* Root container takes full height */
+#root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* Cache-fixing class */
+.router-ready {
+  opacity: 1;
+}
+
 @layer components {
   /* Custom scrollbar for modern browsers */
   .custom-scrollbar {

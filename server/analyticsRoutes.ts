@@ -1,15 +1,15 @@
 import { Request, Response } from "express";
 import { format, subDays, parseISO, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { analyticsHelper } from "./analyticsHelper";
-import { TaskStatus } from "../shared/schema";
+import { TaskStatus, Task } from "../shared/schema";
 import { storage } from "./storage";
 
 /**
  * Register analytics routes with the Express app
  */
-export function registerAnalyticsRoutes(app: any) {
+export function registerAnalyticsRoutes(router: any) {
   // Get analytics dashboard data
-  app.get("/api/analytics/dashboard", async (req: Request, res: Response) => {
+  router.get("/analytics/dashboard", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -69,7 +69,7 @@ export function registerAnalyticsRoutes(app: any) {
   });
   
   // Get weekly task completion rates - ensure the route is registered correctly
-  app.get("/api/analytics/weekly-completion", async (req: Request, res: Response) => {
+  router.get("/analytics/weekly-completion", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -84,14 +84,15 @@ export function registerAnalyticsRoutes(app: any) {
   });
   
   // Get team performance metrics
-  app.get("/api/analytics/team-performance", async (req: Request, res: Response) => {
+  router.get("/analytics/team-performance", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Unauthorized" });
     }
     
     try {
-      const users = await storage.getAllUsers();
-      const tasks = await storage.getAllTasks();
+      // Cast storage to any to avoid TypeScript errors
+      const users = await (storage as any).getAllUsers();
+      const tasks = await (storage as any).getAllTasks();
       
       const userPerformance = await analyticsHelper.getUserCompletionRates(users, tasks);
       
@@ -103,7 +104,7 @@ export function registerAnalyticsRoutes(app: any) {
   });
   
   // Get analytics summary (totals and rates)
-  app.get("/api/analytics/summary", async (req: Request, res: Response) => {
+  router.get("/analytics/summary", async (req: Request, res: Response) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Unauthorized" });
     }
@@ -121,8 +122,8 @@ export function registerAnalyticsRoutes(app: any) {
 /**
  * Get weekly task completion rate data
  */
-async function getWeeklyTaskCompletionRate() {
-  const tasks = await storage.getAllTasks();
+async function getWeeklyTaskCompletionRate(): Promise<any[]> {
+  const tasks = await (storage as any).getAllTasks();
   const now = new Date();
   
   // Get data for the last 10 weeks
@@ -132,16 +133,16 @@ async function getWeeklyTaskCompletionRate() {
     const weekStart = startOfWeek(subDays(now, i * 7));
     const weekEnd = endOfWeek(subDays(now, i * 7));
     
-    const weekTasks = tasks.filter(task => {
+    const weekTasks = tasks.filter((task: Task) => {
       // Use createdAt since updatedAt is not available
       const taskDate = task.createdAt ? new Date(task.createdAt) : null;
       return taskDate && taskDate >= weekStart && taskDate <= weekEnd;
     });
     
     const totalTasks = weekTasks.length;
-    const completedTasks = weekTasks.filter(task => task.status === TaskStatus.COMPLETED).length;
-    const inProgressTasks = weekTasks.filter(task => task.status === TaskStatus.IN_PROGRESS).length;
-    const notStartedTasks = weekTasks.filter(task => task.status === TaskStatus.NOT_STARTED).length;
+    const completedTasks = weekTasks.filter((task: Task) => task.status === TaskStatus.COMPLETED).length;
+    const inProgressTasks = weekTasks.filter((task: Task) => task.status === TaskStatus.IN_PROGRESS).length;
+    const notStartedTasks = weekTasks.filter((task: Task) => task.status === TaskStatus.NOT_STARTED).length;
     
     const completionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
     
@@ -161,21 +162,21 @@ async function getWeeklyTaskCompletionRate() {
 /**
  * Get overall analytics summary
  */
-async function getAnalyticsSummary() {
-  const tasks = await storage.getAllTasks();
-  const users = await storage.getAllUsers();
+async function getAnalyticsSummary(): Promise<any> {
+  const tasks = await (storage as any).getAllTasks();
+  const users = await (storage as any).getAllUsers();
   
   // Calculate totals
   const totalTasks = tasks.length;
-  const completedTasks = tasks.filter(task => task.status === TaskStatus.COMPLETED).length;
-  const inProgressTasks = tasks.filter(task => task.status === TaskStatus.IN_PROGRESS).length;
-  const notStartedTasks = tasks.filter(task => task.status === TaskStatus.NOT_STARTED).length;
+  const completedTasks = tasks.filter((task: Task) => task.status === TaskStatus.COMPLETED).length;
+  const inProgressTasks = tasks.filter((task: Task) => task.status === TaskStatus.IN_PROGRESS).length;
+  const notStartedTasks = tasks.filter((task: Task) => task.status === TaskStatus.NOT_STARTED).length;
   
   // Calculate completion rate
   const completionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
   
   // Calculate overdue tasks
-  const overdueTasks = tasks.filter(task => {
+  const overdueTasks = tasks.filter((task: Task) => {
     if (task.status === TaskStatus.COMPLETED) return false;
     if (!task.dueDate) return false;
     
@@ -194,10 +195,12 @@ async function getAnalyticsSummary() {
     const date = subDays(now, i);
     const formattedDate = format(date, "EEE");
     
-    const dayTasks = tasks.filter(task => {
+    const tasksInPeriod = tasks.filter((task: Task) => {
       const createdAt = task.createdAt ? new Date(task.createdAt) : null;
       return createdAt && format(createdAt, "yyyy-MM-dd") === format(date, "yyyy-MM-dd");
-    }).length;
+    });
+    
+    const dayTasks = tasksInPeriod.length;
     
     dailyTaskCounts.push({
       day: formattedDate,

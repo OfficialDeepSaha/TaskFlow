@@ -37,6 +37,7 @@ export const users = pgTable("users", {
     systemUpdates: boolean;
   }>(),
   email: text("email"),
+  isActive: boolean("is_active").notNull().default(true), // Add isActive field defaulting to true
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({
@@ -46,9 +47,11 @@ export const insertUserSchema = createInsertSchema(users).pick({
   role: true,
   email: true,
   notificationPreferences: true,
+  isActive: true,
 }).extend({
   role: z.nativeEnum(UserRole).optional().default(UserRole.USER),
   email: z.string().email().optional(),
+  isActive: z.boolean().optional().default(true),
   notificationPreferences: z
     .object({
       channels: z.array(z.nativeEnum(NotificationChannel)).optional().default([NotificationChannel.IN_APP]),
