@@ -64,8 +64,32 @@ class ErrorBoundary extends Component<{children: ReactNode, fallback?: ReactNode
 
 // Dashboard layout with sidebar
 function DashboardLayout({ children }: { children: ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [location] = useLocation();
+  
+  // Track screen size
+  const [isMobile, setIsMobile] = useState(false);
+  
+  // Handle screen size changes
+  useEffect(() => {
+    const checkScreenSize = () => {
+      setIsMobile(window.innerWidth < 1024);
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(true); // Auto-open on large screens
+      } else {
+        setSidebarOpen(false); // Auto-close on small screens
+      }
+    };
+    
+    // Initial check
+    checkScreenSize();
+    
+    // Add listener for window resize
+    window.addEventListener('resize', checkScreenSize);
+    
+    // Cleanup
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
   
   // Extract page title from location
   const getTitle = () => {
@@ -102,16 +126,16 @@ function DashboardLayout({ children }: { children: ReactNode }) {
   };
   
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex flex-col lg:flex-row h-screen overflow-hidden bg-background">
       <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} />
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden w-full">
         <Navbar 
           title={getTitle()} 
           sidebarOpen={sidebarOpen} 
           setSidebarOpen={setSidebarOpen} 
         />
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-background/50">
-          <div className="max-w-7xl mx-auto">
+        <main className="flex-1 overflow-y-auto px-3 py-3 sm:p-5 md:p-6 lg:p-8 bg-background/50 transition-all duration-200">
+          <div className="w-full mx-auto">
             {children}
           </div>
         </main>

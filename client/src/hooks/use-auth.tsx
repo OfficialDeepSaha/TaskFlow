@@ -329,18 +329,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logoutMutation = useMutation({
     mutationFn: async () => {
       console.log('Attempting logout');
-      await apiRequest('POST', '/api/logout', {});
-      // Don't try to parse as JSON, just return void
+      try {
+        // First try the server logout endpoint
+        await apiRequest('POST', '/api/logout', {});
+        console.log('Server logout successful');
+      } catch (error) {
+        // If server logout fails, we'll still do client-side cleanup
+        console.warn('Server logout failed, but continuing with client cleanup:', error);
+      }
+      
+      // Even if the server logout fails, we'll clear everything on the client
       return;
     },
     onSuccess: () => {
-      console.log('Logout successful');
+      console.log('Logout successful - clearing all state and storage');
       
-      // Disconnect WebSocket
+      // Disconnect WebSocket first
       disconnectWebSocket();
       
       // Clear session cookies
       clearSessionCookie();
+      
+      // Set user to null immediately
+      setUser(null);
       
       // Clear auth state
       queryClient.setQueryData(["/api/user"], null);
@@ -354,17 +365,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: "You have been successfully logged out.",
       });
       
-      // Navigate to auth page
-      console.log('Navigating to auth page after logout');
-      navigate("/auth");
+      // Force a page reload to ensure all components unmount and reset
+      setTimeout(() => {
+        console.log('Navigating to auth page after logout');
+        navigate("/auth");
+        
+        // Optional: Add a small delay and force refresh to ensure a clean state
+        setTimeout(() => {
+          window.location.href = '/auth';
+        }, 100);
+      }, 50);
     },
     onError: (error: Error) => {
       console.error('Logout error:', error);
+      
+      // Even on error, try to clean up client-side state
+      disconnectWebSocket();
+      clearSessionCookie();
+      setUser(null);
+      queryClient.setQueryData(["/api/user"], null);
+      queryClient.clear();
+      
       toast({
-        title: "Logout failed",
-        description: error.message,
+        title: "Logout process completed",
+        description: "You have been logged out, but there was an issue with the server.",
         variant: "destructive",
       });
+      
+      // Redirect to auth page regardless of error
+      navigate("/auth");
     },
   });
 

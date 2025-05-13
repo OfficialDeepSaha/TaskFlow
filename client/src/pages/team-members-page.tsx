@@ -55,6 +55,7 @@ interface User {
   role: string;
   isActive?: boolean;
   createdAt?: string;
+  username: string;
 }
 
 export default function TeamMembersPage() {
@@ -115,12 +116,12 @@ export default function TeamMembersPage() {
     // Ensure we're setting all the required fields with proper values
     setEditForm({
       name: user.name || '',
-      email: user.email || '',
+      email: user.username || '',
       role: user.role || '',
     });
     console.log('Edit form data:', { user, editForm: {
       name: user.name || '',
-      email: user.email || '',
+      email: user.username || '',
       role: user.role || '',
     }});
     setOpenEditDialog(true);
@@ -144,7 +145,14 @@ export default function TeamMembersPage() {
     
     setLoadingAction(selectedUser.id);
     try {
-      const response = await axios.put(`/api/users/${selectedUser.id}`, editForm);
+      // Create the update payload, mapping email field back to username
+      const updatePayload = {
+        name: editForm.name,
+        username: editForm.email,
+        role: editForm.role
+      };
+      
+      const response = await axios.put(`/api/users/${selectedUser.id}`, updatePayload);
       
       setUsers(users.map(user => 
         user.id === selectedUser.id ? { ...user, ...response.data } : user
@@ -264,392 +272,310 @@ export default function TeamMembersPage() {
   }
 
   return (
-    <div className="container px-4 py-6 mx-auto">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-      >
-        <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">Team Members</h1>
-            <p className="text-muted-foreground">
-              Manage your team members and their access to the system.
-            </p>
-          </div>
-          <Dialog>
-            <DialogTrigger asChild>
-              
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New Team Member</DialogTitle>
-                <DialogDescription>
-                  Send an invitation to a new team member. They will receive an email to set up their account.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="name" className="text-right">
-                    Name
-                  </Label>
-                  <Input id="name" className="col-span-3" />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="email" className="text-right">
-                    Email
-                  </Label>
-                  <Input id="email" className="col-span-3" />
-                </div>
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="role" className="text-right">
-                    Role
-                  </Label>
-                  <Select>
-                    <SelectTrigger className="col-span-3">
-                      <SelectValue placeholder="Select role" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="user">User</SelectItem>
-                      <SelectItem value="manager">Manager</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline">Cancel</Button>
-                <Button>Send Invitation</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Team Members</h2>
+          <p className="text-muted-foreground mt-1">
+            Manage your team members and their roles
+          </p>
         </div>
-
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>All Members ({users.length}){searchQuery ? ` | Showing ${filteredUsers.length} result${filteredUsers.length !== 1 ? 's' : ''}` : ''}</CardTitle>
-                <CardDescription>Manage your team and their permissions</CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Search members..."
-                  className="w-[250px]"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
+        
+        <div className="flex flex-col xs:flex-row gap-3 w-full sm:w-auto">
+          <div className="relative flex-1 sm:flex-none">
+            <Input
+              placeholder="Search members..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full sm:w-[220px] pl-8"
+            />
+            <User className="absolute left-2.5 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          </div>
+          
+          
+        </div>
+      </div>
+      
+      <Card className="shadow-sm">
+        <CardHeader className="p-4 sm:p-6">
+          <div className="flex items-center justify-between">
+            <CardTitle>Team Members ({filteredUsers.length})</CardTitle>
+            <Tabs defaultValue="all" className="w-full max-w-[400px]">
+              <TabsList className="grid grid-cols-2 w-full">
+                <TabsTrigger value="all">All Members</TabsTrigger>
+                <TabsTrigger value="active">Active Only</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center p-8">
+              <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-4"></div>
+              <p className="text-muted-foreground">Loading team members...</p>
             </div>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
+          ) : filteredUsers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-8">
+              <div className="bg-muted/40 p-4 rounded-full mb-4">
+                <UserX className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-medium mb-1">No team members found</h3>
+              <p className="text-muted-foreground text-center max-w-md mb-4">
+                {searchQuery 
+                  ? `No results for "${searchQuery}". Try a different search term.` 
+                  : "You haven't added any team members yet."}
+              </p>
+              {searchQuery && (
+                <Button variant="outline" onClick={() => setSearchQuery('')}>
+                  <X className="h-4 w-4 mr-2" /> Clear Search
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-10">
-                      <div className="flex flex-col items-center justify-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-2" />
-                        <p className="text-sm text-muted-foreground">Loading team members...</p>
-                      </div>
-                    </TableCell>
+                    <TableHead className="w-[250px]">Name</TableHead>
+                    <TableHead className="hidden md:table-cell">Role</TableHead>
+                    <TableHead className="hidden sm:table-cell">Status</TableHead>
+                    <TableHead className="hidden lg:table-cell">Date Added</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ) : filteredUsers.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-10">
-                      <p className="text-muted-foreground">No team members found</p>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  filteredUsers.map((user) => (
-                    <TableRow key={user.id} className="group">
-                      <TableCell>
+                </TableHeader>
+                <TableBody>
+                  {filteredUsers.map((user) => (
+                    <TableRow key={user.id} className="group cursor-pointer hover:bg-muted/50" onClick={() => handleViewUserDetails(user)}>
+                      <TableCell className="font-medium">
                         <div className="flex items-center gap-3">
-                          <Avatar className={getAvatarColor(user.name)}>
-                            <AvatarFallback>{getInitials(user.name)}</AvatarFallback>
+                          <Avatar className="h-8 w-8 border border-border/50">
+                            <AvatarFallback className={getAvatarColor(user.name)}>
+                              {getInitials(user.name)}
+                            </AvatarFallback>
                           </Avatar>
                           <div>
-                            <p className="font-medium">{user.name}</p>
-                            {user.id === currentUser.id && (
-                              <p className="text-xs text-muted-foreground">(You)</p>
-                            )}
+                            <div className="font-medium">{user.name}</div>
+                            <div className="text-xs text-muted-foreground hidden sm:block">{user.username}</div>
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>{getRoleBadge(user.role)}</TableCell>
-                      <TableCell>{getStatusBadge(user.isActive)}</TableCell>
+                      <TableCell className="hidden md:table-cell">
+                        {getRoleBadge(user.role)}
+                      </TableCell>
+                      <TableCell className="hidden sm:table-cell">
+                        {getStatusBadge(user.isActive)}
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell text-muted-foreground">
+                        {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
+                      </TableCell>
                       <TableCell className="text-right">
-                        {loadingAction === user.id ? (
-                          <div className="flex justify-end">
-                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary" />
-                          </div>
-                        ) : (
+                        <div onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100">
                                 <MoreHorizontal className="h-4 w-4" />
+                                <span className="sr-only">More options</span>
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={() => handleViewUserDetails(user)}>
-                                <User className="mr-2 h-4 w-4" />
-                                <span>View Details</span>
-                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => handleEditUser(user)}>
-                                <Edit2 className="mr-2 h-4 w-4" />
-                                <span>Edit</span>
+                                <Edit2 className="h-4 w-4 mr-2" /> Edit
                               </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleToggleUserStatus(user.id, user.isActive === false)}
-                                disabled={user.id === currentUser.id}
+                              <DropdownMenuItem 
+                                onClick={() => handleToggleUserStatus(user.id, !user.isActive)}
+                                className={!user.isActive ? 'text-green-600' : 'text-amber-600'}
                               >
-                                {user.isActive === false ? (
-                                  <>
-                                    <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
-                                    <span>Activate</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <UserX className="mr-2 h-4 w-4 text-destructive" />
-                                    <span>Deactivate</span>
-                                  </>
-                                )}
+                                {!user.isActive 
+                                  ? <><CheckCircle className="h-4 w-4 mr-2" /> Activate</>
+                                  : <><AlertCircle className="h-4 w-4 mr-2" /> Deactivate</>
+                                }
                               </DropdownMenuItem>
-                              <DropdownMenuItem
+                              <DropdownMenuItem 
                                 onClick={() => handleDeletePrompt(user)}
-                                disabled={user.id === currentUser.id}
                                 className="text-destructive focus:text-destructive"
                               >
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                <span>Delete</span>
+                                <Trash2 className="h-4 w-4 mr-2" /> Delete
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
-                        )}
+                        </div>
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </motion.div>
-
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      
       {/* Edit User Dialog */}
       <Dialog open={openEditDialog} onOpenChange={setOpenEditDialog}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Edit Team Member</DialogTitle>
             <DialogDescription>
-              Update the details for {selectedUser?.name}
+              Update team member details and permissions.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-name" className="text-right">
-                Name
-              </Label>
-              <Input
-                id="edit-name"
+            <div className="grid gap-2">
+              <Label htmlFor="edit-name">Full name</Label>
+              <Input 
+                id="edit-name" 
                 value={editForm.name}
-                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                className="col-span-3"
+                onChange={(e) => setEditForm({...editForm, name: e.target.value})}
               />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-email" className="text-right">
-                Email
-              </Label>
-              <Input
-                id="edit-email"
-                value={editForm.email || ''}
-                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                className="col-span-3"
-                placeholder="Enter email address"
+            <div className="grid gap-2">
+              <Label htmlFor="edit-email">Email address</Label>
+              <Input 
+                id="edit-email" 
+                value={editForm.email}
+                onChange={(e) => setEditForm({...editForm, email: e.target.value})}
               />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="edit-role" className="text-right">
-                Role
-              </Label>
-              <Select
+            <div className="grid gap-2">
+              <Label htmlFor="edit-role">Role</Label>
+              <Select 
                 value={editForm.role}
-                onValueChange={(value) => setEditForm({ ...editForm, role: value })}
+                onValueChange={(value) => setEditForm({...editForm, role: value})}
               >
-                <SelectTrigger className="col-span-3">
+                <SelectTrigger id="edit-role">
                   <SelectValue placeholder="Select role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="user">User</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="user">User</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpenEditDialog(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setOpenEditDialog(false)}>Cancel</Button>
             <Button onClick={handleUpdateUser} disabled={loadingAction === selectedUser?.id}>
               {loadingAction === selectedUser?.id ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary mr-2" />
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-background border-t-foreground"></div>
                   Updating...
                 </>
-              ) : (
-                'Update'
-              )}
+              ) : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
+      
       {/* Delete User Dialog */}
       <Dialog open={openDeleteDialog} onOpenChange={setOpenDeleteDialog}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>Delete Team Member</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete {selectedUser?.name}? This action cannot be undone.
+              This action cannot be undone. The user will lose all access to the system.
             </DialogDescription>
           </DialogHeader>
+          <div className="p-4 border rounded-lg bg-destructive/10 mb-4">
+            <p>Are you sure you want to delete <strong>{selectedUser?.name}</strong>?</p>
+          </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOpenDeleteDialog(false)}>
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleDeleteUser}
-              disabled={loadingAction === selectedUser?.id}
-            >
+            <Button variant="outline" onClick={() => setOpenDeleteDialog(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDeleteUser} disabled={loadingAction === selectedUser?.id}>
               {loadingAction === selectedUser?.id ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-background mr-2" />
+                  <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-destructive-foreground border-t-destructive"></div>
                   Deleting...
                 </>
-              ) : (
-                'Delete'
-              )}
+              ) : 'Delete User'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
+      
       {/* User Details Sheet */}
       <Sheet open={openUserDetailsSheet} onOpenChange={setOpenUserDetailsSheet}>
         <SheetContent className="sm:max-w-md">
           <SheetHeader>
             <SheetTitle>User Details</SheetTitle>
             <SheetDescription>
-              View detailed information about this team member.
+              View and manage user information
             </SheetDescription>
           </SheetHeader>
           {selectedUser && (
             <div className="py-6">
-              <div className="flex items-center justify-center mb-6">
-                <Avatar className={`h-24 w-24 ${getAvatarColor(selectedUser.name)}`}>
-                  <AvatarFallback className="text-2xl">{getInitials(selectedUser.name)}</AvatarFallback>
+              <div className="flex items-center mb-6">
+                <Avatar className="h-16 w-16 mr-4 border-2 border-border/50">
+                  <AvatarFallback className={getAvatarColor(selectedUser.name)}>
+                    {getInitials(selectedUser.name)}
+                  </AvatarFallback>
                 </Avatar>
+                <div>
+                  <h3 className="text-lg font-medium">{selectedUser.name}</h3>
+                  <p className="text-sm text-muted-foreground">{selectedUser.username}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    {getRoleBadge(selectedUser.role)}
+                    {getStatusBadge(selectedUser.isActive)}
+                  </div>
+                </div>
               </div>
               
-              <div className="space-y-6">
+              <Separator className="my-4" />
+              
+              <div className="space-y-4">
                 <div>
-                  <h3 className="text-xl font-semibold text-center">{selectedUser.name}</h3>
-                  <p className="text-muted-foreground text-center">{selectedUser.email}</p>
+                  <h4 className="text-sm font-medium mb-1">User Info</h4>
+                  <div className="text-sm space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Email</span>
+                      <span>{selectedUser.username}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Date Added</span>
+                      <span>{selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleDateString() : 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Status</span>
+                      <div>{getStatusBadge(selectedUser.isActive)}</div>
+                    </div>
+                  </div>
                 </div>
                 
-                <div className="flex justify-center space-x-2">
-                  {getRoleBadge(selectedUser.role)}
-                  {getStatusBadge(selectedUser.isActive)}
+                <Separator className="my-4" />
+                
+                <div className="flex flex-col gap-2">
+                  <h4 className="text-sm font-medium mb-1">Account Status</h4>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="user-active" className="flex-grow">Active account</Label>
+                    <Switch
+                      id="user-active"
+                      checked={!!selectedUser.isActive}
+                      onCheckedChange={(checked) => handleToggleUserStatus(selectedUser.id, checked)}
+                    />
+                  </div>
                 </div>
                 
-                <Separator />
+                <Separator className="my-4" />
                 
-                <Tabs defaultValue="info">
-                  <TabsList className="grid w-full grid-cols-2">
-                    <TabsTrigger value="info">User Info</TabsTrigger>
-                    <TabsTrigger value="activity">Activity</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="info" className="space-y-4 pt-4">
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="text-sm font-medium text-muted-foreground">User ID</div>
-                      <div className="col-span-2 text-sm font-mono">{selectedUser.id}</div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="text-sm font-medium text-muted-foreground">Created</div>
-                      <div className="col-span-2 text-sm">
-                        {selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleDateString() : 'N/A'}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="text-sm font-medium text-muted-foreground">Status</div>
-                      <div className="col-span-2 text-sm">
-                        {selectedUser.isActive === false ? 'Inactive' : 'Active'}
-                      </div>
-                    </div>
-                  </TabsContent>
-                  <TabsContent value="activity" className="space-y-4 pt-4">
-                    <p className="text-sm text-muted-foreground">
-                      Recent activity will be shown here in the future.
-                    </p>
-                  </TabsContent>
-                </Tabs>
-                
-                <div className="flex flex-col space-y-2 mt-6">
-                  <Button
+                <div className="pt-4 flex flex-col gap-3">
+                  <Button 
                     variant="outline" 
-                    className="w-full"
-                    onClick={() => handleEditUser(selectedUser)}
+                    className="w-full justify-start" 
+                    onClick={() => {
+                      setOpenUserDetailsSheet(false);
+                      handleEditUser(selectedUser);
+                    }}
                   >
-                    <Edit2 className="mr-2 h-4 w-4" />
-                    Edit User
+                    <Edit2 className="mr-2 h-4 w-4" /> Edit User
                   </Button>
-                  
-                  {selectedUser.id !== currentUser.id && (
-                    <>
-                      <Button
-                        variant={selectedUser.isActive === false ? "default" : "secondary"}
-                        className="w-full"
-                        onClick={() => handleToggleUserStatus(selectedUser.id, selectedUser.isActive === false)}
-                      >
-                        {selectedUser.isActive === false ? (
-                          <>
-                            <CheckCircle className="mr-2 h-4 w-4" />
-                            Activate User
-                          </>
-                        ) : (
-                          <>
-                            <UserX className="mr-2 h-4 w-4" />
-                            Deactivate User
-                          </>
-                        )}
-                      </Button>
-                      
-                      <Button
-                        variant="destructive"
-                        className="w-full"
-                        onClick={() => {
-                          setOpenUserDetailsSheet(false);
-                          handleDeletePrompt(selectedUser);
-                        }}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete User
-                      </Button>
-                    </>
-                  )}
+                  <Button 
+                    variant="destructive" 
+                    className="w-full justify-start" 
+                    onClick={() => {
+                      setOpenUserDetailsSheet(false);
+                      handleDeletePrompt(selectedUser);
+                    }}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" /> Delete User
+                  </Button>
                 </div>
               </div>
             </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { 
   BarChart as BarChartIcon, 
@@ -12,7 +12,13 @@ import {
   ArrowRight, 
   AlertCircle, 
   Loader2, 
-  Activity 
+  Activity,
+  ChevronRight,
+  TrendingUp,
+  Star,
+  Calendar,
+  Award,
+  LucideIcon
 } from "lucide-react";
 import { 
   ResponsiveContainer, 
@@ -110,12 +116,12 @@ interface ApiAnalyticsData {
   summary: AnalyticsSummary;
 }
 
-// Colors for charts
+// Colors for charts - more refined palette
 const CHART_COLORS = {
   completed: '#10b981',
   inProgress: '#3b82f6',
   notStarted: '#6b7280',
-  overdue: '#ef4444',
+  overdue: '#f43f5e',
   high: '#ef4444',
   medium: '#f59e0b',
   low: '#10b981',
@@ -179,41 +185,58 @@ const formatDateForDisplay = (dateString: string): string => {
   }
 };
 
-// Card component for statistics
+// Card component for statistics with refined design
 const StatCard: React.FC<{
   title: string;
   value: string | number;
   subValue?: string;
   icon: React.ReactNode;
   trend?: 'up' | 'down' | 'neutral';
-}> = ({ title, value, subValue, icon, trend }) => {
+  color?: string;
+}> = ({ title, value, subValue, icon, trend, color = "primary" }) => {
   return (
-    <Card>
+    <Card className="overflow-hidden border-none shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-card/50 to-background backdrop-blur-sm">
       <CardHeader className="pb-2">
         <CardTitle className="text-sm font-medium flex items-center">
-          {icon}
-          <span className="ml-2">{title}</span>
+          {title}
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        {subValue && (
-          <div className={`text-xs flex items-center ${trend === 'up' ? 'text-green-600' : trend === 'down' ? 'text-red-600' : 'text-muted-foreground'}`}>
-            {trend === 'up' && <ArrowUp className="h-3 w-3 mr-1" />}
-            {trend === 'down' && <ArrowDown className="h-3 w-3 mr-1" />}
-            {subValue}
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-2xl sm:text-3xl font-bold">{value}</div>
+            {subValue && (
+              <div className="flex items-center mt-1">
+                {trend === 'up' && (
+                  <ArrowUp className="mr-1 h-3 w-3 text-emerald-500" />
+                )}
+                {trend === 'down' && (
+                  <ArrowDown className="mr-1 h-3 w-3 text-rose-500" />
+                )}
+                {trend === 'neutral' && (
+                  <ArrowRight className="mr-1 h-3 w-3 text-amber-500" />
+                )}
+                <p className={`text-xs ${trend === 'up' ? 'text-emerald-500' : trend === 'down' ? 'text-rose-500' : 'text-amber-500'}`}>
+                  {subValue}
+                </p>
+              </div>
+            )}
           </div>
-        )}
+          <div className={`rounded-full p-2 text-white bg-${color}`}>
+            {icon}
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
 };
 
-// Loading spinner component
+// Loading spinner component - more refined
 const LoadingSpinner: React.FC = () => (
   <div className="flex justify-center items-center h-[200px]">
     <div className="relative">
-      <div className="w-10 h-10 rounded-full border-4 border-primary/30 border-t-primary animate-spin"></div>
+      <div className="w-12 h-12 rounded-full border-4 border-primary/20 border-t-primary animate-spin"></div>
+      <div className="w-8 h-8 rounded-full border-4 border-primary/40 border-b-primary animate-spin absolute inset-0 m-auto" style={{ animationDirection: 'reverse' }}></div>
       <div className="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center">
         <div className="w-2 h-2 rounded-full bg-primary animate-pulse"></div>
       </div>
@@ -221,66 +244,99 @@ const LoadingSpinner: React.FC = () => (
   </div>
 );
 
-// Chart placeholder component
+// Chart placeholder component - more refined
 const ChartPlaceholder: React.FC<{
   icon: React.ReactNode;
   title: string;
   subtitle: string;
 }> = ({ icon, title, subtitle }) => (
-  <div className="flex flex-col items-center justify-center h-full w-full">
-    <div className="text-muted-foreground/50 mb-4">
+  <div className="flex flex-col items-center justify-center h-full w-full py-16">
+    <div className="text-muted-foreground/50 mb-6 p-6 rounded-full bg-muted/30 backdrop-blur-sm">
       {icon}
     </div>
-    <h3 className="text-lg font-medium mb-1">{title}</h3>
-    <p className="text-sm text-muted-foreground">{subtitle}</p>
+    <h3 className="text-lg font-medium mb-2">{title}</h3>
+    <p className="text-sm text-muted-foreground max-w-xs text-center">{subtitle}</p>
   </div>
 );
 
-// Task distribution pie chart component
+// Adjust TaskDistributionChart for responsiveness
 const TaskDistributionChart: React.FC<{
   data: TaskStatusDistribution[];
   loading: boolean;
 }> = ({ data, loading }) => {
-  const formattedData = data.map((item: TaskStatusDistribution) => ({
+  // Add colors to data
+  const dataWithColors = data.map(item => ({
     ...item,
-    name: STATUS_DISPLAY[item.status] || item.status,
     color: getStatusColor(item.status)
   }));
 
   if (loading) {
-    return <LoadingSpinner />;
+    return <ChartPlaceholder 
+      icon={<PieChartIcon className="h-10 w-10 opacity-20" />} 
+      title="Task Distribution" 
+      subtitle="Loading distribution data..." 
+    />;
   }
 
-  if (!data.length) {
-    return (
-      <ChartPlaceholder
-        icon={<PieChartIcon className="h-12 w-12" />}
-        title="No Task Data Available"
-        subtitle="Task status distribution will appear here"
-      />
-    );
+  if (!data || data.length === 0) {
+    return <ChartPlaceholder 
+      icon={<PieChartIcon className="h-10 w-10 opacity-20" />} 
+      title="No Task Data" 
+      subtitle="No task distribution data available" 
+    />;
   }
+
+  // Convert status to display format (e.g., 'in_progress' -> 'In Progress')
+  const formattedData = dataWithColors.map(item => {
+    let displayStatus = item.status;
+    
+    // Handle different status formats
+    if (STATUS_DISPLAY[item.status.toUpperCase()]) {
+      displayStatus = STATUS_DISPLAY[item.status.toUpperCase()];
+    } else if (item.status.toLowerCase() === 'in_progress') {
+      displayStatus = 'In Progress';
+    } else if (item.status.toLowerCase() === 'completed') {
+      displayStatus = 'Completed';
+    } else {
+      // Convert snake_case or other formats to Title Case
+      displayStatus = item.status
+        .split('_')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+    }
+    
+    return {
+      ...item,
+      status: displayStatus
+    };
+  });
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <RechartsPieChart>
-        <Pie
-          data={formattedData}
-          dataKey="count"
-          nameKey="name"
-          cx="50%"
-          cy="50%"
-          outerRadius={80}
-          label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
-        >
-          {formattedData.map((entry: TaskStatusDistribution, index: number) => (
-            <Cell key={`cell-${index}`} fill={entry.color || '#6b7280'} />
-          ))}
-        </Pie>
-        <RechartsTooltip />
-        <Legend />
-      </RechartsPieChart>
-    </ResponsiveContainer>
+    <div className="h-[300px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <RechartsPieChart>
+          <Pie
+            data={formattedData}
+            cx="50%"
+            cy="50%"
+            labelLine={false}
+            label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+            outerRadius={80}
+            fill="#8884d8"
+            dataKey="count"
+            nameKey="status"
+          >
+            {formattedData.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={entry.color} />
+            ))}
+          </Pie>
+          <RechartsTooltip 
+            formatter={(value, name) => [`${value} tasks`, name]} 
+          />
+          <Legend />
+        </RechartsPieChart>
+      </ResponsiveContainer>
+    </div>
   );
 };
 
@@ -293,7 +349,7 @@ const TaskTrendsChart: React.FC<{
     return <LoadingSpinner />;
   }
 
-  if (!data.length) {
+  if (!data || !data.length) {
     return (
       <ChartPlaceholder
         icon={<LineChartIcon className="h-12 w-12" />}
@@ -309,7 +365,14 @@ const TaskTrendsChart: React.FC<{
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis 
           dataKey="date" 
-          tickFormatter={(date) => format(parseISO(date), 'MMM dd')} 
+          tickFormatter={(date) => {
+            if (!date) return '';
+            try {
+              return format(parseISO(date), 'MMM dd');
+            } catch (e) {
+              return date;
+            }
+          }} 
         />
         <YAxis />
         <RechartsTooltip 
@@ -321,7 +384,14 @@ const TaskTrendsChart: React.FC<{
                 ? 'In Progress' 
                 : 'Created'
           ]}
-          labelFormatter={(date: string) => format(parseISO(date), 'MMM dd, yyyy')}
+          labelFormatter={(date: string) => {
+            if (!date) return '';
+            try {
+              return format(parseISO(date), 'MMM dd, yyyy');
+            } catch (e) {
+              return date;
+            }
+          }}
         />
         <Legend />
         <Line 
@@ -491,345 +561,349 @@ const WeeklyCompletionChart: React.FC<{
   );
 };
 
-// Main analytics dashboard component
+// Main component - enhance for full responsiveness
 const AdminAnalyticsPage: React.FC = () => {
-  // State for data
-  const [analyticsData, setAnalyticsData] = useState<ApiAnalyticsData | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [timeRange, setTimeRange] = useState<string>("7days");
-  const [activeTab, setActiveTab] = useState<string>("overview");
   const { toast } = useToast();
+  const [analyticsData, setAnalyticsData] = useState<ApiAnalyticsData>({
+    userCompletionRates: [],
+    taskStatusDistribution: [],
+    taskTrends: [],
+    overdueByPriority: [],
+    timeToCompleteAvg: [],
+    weeklyCompletionRate: [],
+    summary: {
+      totalTasks: 0,
+      completedTasks: 0,
+      inProgressTasks: 0,
+      notStartedTasks: 0,
+      overdueTasks: 0,
+      activeUsers: 0,
+      avgCompletionTimeInDays: 0,
+      completionRate: 0
+    }
+  });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("overview");
 
-  // Fetch data from API
+  // Fetch analytics data on mount
+  useEffect(() => {
+    fetchAnalyticsData();
+  }, []);
+
   const fetchAnalyticsData = async () => {
-    setIsLoading(true);
+    setLoading(true);
     setError(null);
-    
     try {
-      const response = await fetch(`/api/analytics/dashboard?timeRange=${timeRange}`);
+      // Make API call to get analytics data
+      const response = await fetch(`/api/analytics`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        // Ensure we're not getting cached data
+        cache: 'no-cache'
+      });
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch analytics data: ${response.statusText}`);
+        throw new Error(`Failed to fetch analytics data: ${response.status} ${response.statusText}`);
       }
       
       const data = await response.json();
-      setAnalyticsData(data);
-    } catch (err) {
-      console.error('Error fetching analytics data:', err);
-      setError('Failed to load analytics data. Please try again.');
+      
+      // Calculate summary values from the response data
+      const totalTasks = data.taskStatusDistribution?.reduce((acc: number, item: any) => acc + item.count, 0) || 0;
+      const completedTasks = data.taskStatusDistribution?.find((item: any) => 
+        item.status.toLowerCase() === 'completed' || item.status.toLowerCase() === 'done')?.count || 0;
+      const inProgressTasks = data.taskStatusDistribution?.find((item: any) => 
+        item.status.toLowerCase() === 'in_progress' || item.status.toLowerCase() === 'in progress')?.count || 0;
+      const activeUsers = data.userCompletionRates?.length || 0;
+      
+      // Calculate completion rate
+      const completionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+      
+      // Create the summary object that's expected by the UI
+      const processedData = {
+        ...data,
+        summary: {
+          totalTasks,
+          completedTasks,
+          inProgressTasks,
+          notStartedTasks: totalTasks - completedTasks - inProgressTasks,
+          overdueTasks: data.overdueByPriority?.reduce((acc: number, item: any) => acc + item.count, 0) || 0,
+          activeUsers,
+          avgCompletionTimeInDays: data.timeToCompleteAvg?.[0]?.avgDays || 0,
+          completionRate: Math.round(completionRate)
+        },
+        // Ensure weeklyCompletionRate exists with at least one item for the UI
+        weeklyCompletionRate: data.weeklyCompletionRate || [{ week: 'This Week', completionRate: completionRate / 100 }]
+      };
+      
+      // Process the data
+      setAnalyticsData(processedData);
+      
+    } catch (error) {
+      console.error('Error fetching analytics data:', error);
+      
       toast({
-        title: "Error",
-        description: "Failed to load analytics data. Please try again.",
-        variant: "destructive"
+        title: "Failed to load analytics data",
+        description: "There was an error processing the analytics data.",
+        variant: "destructive",
       });
+      
+      setError((error as Error).message || "Failed to load analytics data");
+      
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  // Fetch data when component mounts or timeRange changes
-  useEffect(() => {
-    fetchAnalyticsData();
-  }, [timeRange]);
-
-  // Loading state
-  if (isLoading && !analyticsData) {
-    return (
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
-            <p className="text-muted-foreground mt-1">Loading analytics data...</p>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i}>
-              <CardHeader className="pb-2">
-                <Skeleton className="h-4 w-32" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-16 mb-2" />
-                <Skeleton className="h-4 w-24" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-        
-        <div className="flex justify-center items-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="ml-2 text-muted-foreground">Loading analytics data...</span>
-        </div>
-      </div>
-    );
-  }
-
-  // Error state
-  if (error) {
-    return (
-      <div className="space-y-6 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
-            <p className="text-muted-foreground mt-1">There was an error loading the analytics data.</p>
-          </div>
-        </div>
-        
-        <Card className="border-red-200">
-          <CardHeader>
-            <CardTitle className="text-red-600 flex items-center">
-              <AlertCircle className="mr-2 h-5 w-5" />
-              Error Loading Analytics
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="mb-4">{error}</p>
-            <Button onClick={fetchAnalyticsData}>
-              Try Again
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // Error state component
+  const ErrorState = () => (
+    <div className="flex flex-col items-center justify-center p-12 bg-destructive/5 rounded-lg border border-destructive/20">
+      <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+      <h3 className="text-xl font-semibold mb-2">Unable to Load Analytics</h3>
+      <p className="text-center text-muted-foreground mb-6 max-w-md">
+        {error || "There was a problem loading the analytics data. This could be due to a network issue or the server may be unavailable."}
+      </p>
+      <Button onClick={fetchAnalyticsData} className="gap-2">
+        <Activity className="h-4 w-4" /> Retry Loading Data
+      </Button>
+    </div>
+  );
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight">Analytics Dashboard</h2>
           <p className="text-muted-foreground mt-1">
-            Track team performance and task metrics
+            Track your team's performance and task metrics
           </p>
         </div>
-        <div className="flex items-center">
-          <div className="flex space-x-2">
-            <Button
-              variant={timeRange === "7days" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setTimeRange("7days")}
-            >
-              7 Days
-            </Button>
-            <Button
-              variant={timeRange === "30days" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setTimeRange("30days")}
-            >
-              30 Days
-            </Button>
-            <Button
-              variant={timeRange === "90days" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setTimeRange("90days")}
-            >
-              90 Days
-            </Button>
-          </div>
+        
+        <div className="flex space-x-2">
+          <Button size="sm" variant="outline" onClick={() => fetchAnalyticsData()} className="flex items-center gap-1">
+            <Activity className="h-4 w-4" /> Refresh Data
+          </Button>
         </div>
       </div>
 
-      {analyticsData && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-            <StatCard 
-              title="Total Tasks" 
-              value={analyticsData.summary?.totalTasks || 0}
-              subValue={`${((analyticsData.summary?.completionRate || 0) * 100).toFixed(1)}% completion rate`}
-              icon={<BarChartIcon className="h-4 w-4 text-muted-foreground" />}
-              trend="neutral"
-            />
-            
-            <StatCard 
-              title="Completed Tasks" 
-              value={analyticsData.summary?.completedTasks || 0}
-              subValue="Tasks finished"
-              icon={<PieChartIcon className="h-4 w-4 text-muted-foreground" />}
-              trend="up"
-            />
-            
-            <StatCard 
-              title="Active Users" 
-              value={analyticsData.summary?.activeUsers || 0}
-              subValue="Contributing team members"
-              icon={<Users className="h-4 w-4 text-muted-foreground" />}
-              trend="neutral"
-            />
-            
-            <StatCard 
-              title="Avg. Completion Time" 
-              value={`${(analyticsData.summary?.avgCompletionTimeInDays || 0).toFixed(1)} days`}
-              subValue="Time to complete tasks"
-              icon={<Clock className="h-4 w-4 text-muted-foreground" />}
-              trend={(analyticsData.summary?.avgCompletionTimeInDays || 0) < 7 ? "up" : "down"}
-            />
-          </div>
-
-          <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 mb-8">
-              <TabsTrigger value="overview">Overview</TabsTrigger>
-              <TabsTrigger value="trends">Task Trends</TabsTrigger>
-              <TabsTrigger value="performance">User Performance</TabsTrigger>
+      {error && !loading ? (
+        <ErrorState />
+      ) : (
+        <Tabs defaultValue="overview" value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="flex justify-between items-center mb-4">
+            <TabsList className="w-full sm:w-auto overflow-x-auto scrollbar-none">
+              <TabsTrigger value="overview" className="min-w-[100px]">Overview</TabsTrigger>
+              <TabsTrigger value="tasks" className="min-w-[100px]">Tasks</TabsTrigger>
+              <TabsTrigger value="team" className="min-w-[100px]">Team</TabsTrigger>
+              <TabsTrigger value="time" className="min-w-[100px]">Time Analysis</TabsTrigger>
             </TabsList>
-            
-            <TabsContent value="overview" className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Task Status Distribution</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <TaskDistributionChart 
-                      data={analyticsData.taskStatusDistribution} 
-                      loading={isLoading}
-                    />
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Overdue Tasks by Priority</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <OverdueTasksChart 
-                      data={analyticsData.overdueByPriority} 
-                      loading={isLoading}
-                    />
-                  </CardContent>
-                </Card>
-              </div>
-              
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center text-base">
-                    <Users className="mr-2 h-5 w-5 text-muted-foreground" />
-                    <span>Top Performers</span>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {isLoading ? (
-                    <div className="space-y-3">
-                      {[1, 2, 3].map((i) => (
-                        <div key={i} className="p-3 rounded-md border">
-                          <Skeleton className="h-5 w-32 mb-2" />
-                          <Skeleton className="h-4 w-24" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <ScrollArea className="h-[300px]">
-                      <ul className="space-y-3">
-                        {analyticsData.userCompletionRates.slice(0, 5).map((performer: UserCompletionRate) => (
-                          <li key={performer.userId} className="p-3 rounded-md border bg-background hover:bg-muted/20 transition-colors">
-                            <div className="font-medium flex items-center justify-between">
-                              <span>{performer.userName}</span>
-                              <span className="text-sm bg-primary/10 text-primary py-1 px-2 rounded-full">
-                                {Math.round((performer.completionRate || 0) * 100)}%
-                              </span>
-                            </div>
-                            <div className="text-sm text-muted-foreground mt-1 flex items-center justify-between">
-                              <span>Team Member</span>
-                              <span className="flex items-center">
-                                <BarChartIcon className="h-3 w-3 mr-1" />
-                                {performer.completed} / {performer.total} tasks
-                              </span>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </ScrollArea>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
-            
-            <TabsContent value="trends" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Task Trends Over Time</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <TaskTrendsChart 
-                    data={analyticsData.taskTrends} 
-                    loading={isLoading}
+          </div>
+          
+          <TabsContent value="overview" className="space-y-6">
+            {/* Summary Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {loading ? (
+                <>
+                  {[1, 2, 3, 4].map((i) => (
+                    <Card key={i} className="overflow-hidden shadow">
+                      <CardHeader className="pb-2">
+                        <Skeleton className="h-4 w-20" />
+                      </CardHeader>
+                      <CardContent>
+                        <Skeleton className="h-8 w-24 mb-1" />
+                        <Skeleton className="h-3 w-16" />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <StatCard
+                    title="Total Tasks"
+                    value={analyticsData?.summary?.totalTasks || 0}
+                    subValue={`${analyticsData?.weeklyCompletionRate?.[0]?.completionRate?.toFixed(0) || 0}% weekly completion`}
+                    trend="neutral"
+                    icon={<Activity className="h-5 w-5" />}
+                    color="primary"
                   />
-                </CardContent>
-              </Card>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Weekly Completion Rate</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <WeeklyCompletionChart 
-                      data={analyticsData.weeklyCompletionRate} 
-                      loading={isLoading}
-                    />
-                  </CardContent>
-                </Card>
-                
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Average Time to Complete</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <TimeToCompleteChart 
-                      data={analyticsData.timeToCompleteAvg} 
-                      loading={isLoading}
-                    />
-                  </CardContent>
-                </Card>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="performance" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">User Completion Rates</CardTitle>
+                  <StatCard
+                    title="Completed Tasks"
+                    value={analyticsData?.summary?.completedTasks || 0}
+                    subValue={`${analyticsData?.summary?.completionRate?.toFixed(0) || 0}% completion rate`}
+                    trend="up"
+                    icon={<TrendingUp className="h-5 w-5" />}
+                    color="success"
+                  />
+                  <StatCard
+                    title="In Progress"
+                    value={analyticsData?.summary?.inProgressTasks || 0}
+                    subValue={`${((analyticsData?.summary?.inProgressTasks || 0) / (analyticsData?.summary?.totalTasks || 1) * 100).toFixed(0)}% of total`}
+                    trend="neutral"
+                    icon={<Activity className="h-5 w-5" />}
+                    color="info"
+                  />
+                  <StatCard
+                    title="Team Members"
+                    value={analyticsData?.summary?.activeUsers || 0}
+                    subValue="Active this week"
+                    trend="up"
+                    icon={<Users className="h-5 w-5" />}
+                    color="warning"
+                  />
+                </>
+              )}
+            </div>
+
+            {/* Main overview charts */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="shadow-md hover:shadow-lg transition-all duration-300 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle>Task Status Distribution</CardTitle>
+                  <CardDescription>Breakdown of tasks by their current status</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ScrollArea className="h-[400px]">
-                    <div className="space-y-4">
-                      {analyticsData.userCompletionRates.map((user: UserCompletionRate) => (
-                        <div key={user.userId} className="border p-4 rounded-lg bg-background">
-                          <div className="flex justify-between items-center mb-2">
-                            <h3 className="font-medium">{user.userName}</h3>
-                            <span className={`px-2 py-1 rounded-full text-xs ${
-                              (user.completionRate || 0) >= 0.7 
-                                ? 'bg-green-100 text-green-800' 
-                                : (user.completionRate || 0) >= 0.4 
-                                  ? 'bg-yellow-100 text-yellow-800' 
-                                  : 'bg-red-100 text-red-800'
-                            }`}>
-                              {((user.completionRate || 0) * 100).toFixed(1)}% Completion
-                            </span>
-                          </div>
-                          <div className="h-2 bg-muted rounded-full">
-                            <div 
-                              className="h-2 rounded-full bg-primary" 
-                              style={{ width: `${(user.completionRate || 0) * 100}%` }}
-                            />
-                          </div>
-                          <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                            <span>{user.completed} completed</span>
-                            <span>{user.total} total</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
+                  <TaskDistributionChart data={analyticsData?.taskStatusDistribution || []} loading={loading} />
                 </CardContent>
               </Card>
-            </TabsContent>
-          </Tabs>
-        </motion.div>
+
+              <Card className="shadow-md hover:shadow-lg transition-all duration-300 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle>Task Trends</CardTitle>
+                  <CardDescription>How tasks have been created & completed over time</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <TaskTrendsChart data={analyticsData?.taskTrends || []} loading={loading} />
+                </CardContent>
+              </Card>
+            </div>
+            
+            {/* Secondary charts */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="shadow-md hover:shadow-lg transition-all duration-300 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle>Overdue Tasks by Priority</CardTitle>
+                  <CardDescription>Distribution of overdue tasks by their priority level</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <OverdueTasksChart data={analyticsData?.overdueByPriority || []} loading={loading} />
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-md hover:shadow-lg transition-all duration-300 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle>Weekly Completion Rate</CardTitle>
+                  <CardDescription>Task completion rate over recent weeks</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <WeeklyCompletionChart data={analyticsData?.weeklyCompletionRate || []} loading={loading} />
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="tasks" className="space-y-4">
+            {/* Task-specific analytics */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="shadow-md hover:shadow-lg transition-all duration-300 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle>Avg. Time to Complete</CardTitle>
+                  <CardDescription>Average days to complete tasks by priority</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <TimeToCompleteChart data={analyticsData?.timeToCompleteAvg || []} loading={loading} />
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-md hover:shadow-lg transition-all duration-300 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle>Task Status Distribution</CardTitle>
+                  <CardDescription>Breakdown of tasks by their current status</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <TaskDistributionChart data={analyticsData?.taskStatusDistribution || []} loading={loading} />
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="team" className="space-y-4">
+            {/* Team-specific analytics */}
+            <Card className="shadow-md hover:shadow-lg transition-all duration-300 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle>Team Member Performance</CardTitle>
+                <CardDescription>Task completion rates by team member</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[300px] sm:h-[400px]">
+                  {loading ? (
+                    <ChartPlaceholder 
+                      icon={<Users className="h-10 w-10 opacity-20" />} 
+                      title="Team Performance" 
+                      subtitle="Loading team performance data..." 
+                    />
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart 
+                        data={analyticsData?.userCompletionRates || []}
+                        margin={{ top: 20, right: 10, left: 10, bottom: 70 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis 
+                          dataKey="userName" 
+                          angle={-45} 
+                          textAnchor="end" 
+                          height={70} 
+                          tick={{ fontSize: 12 }} 
+                        />
+                        <YAxis />
+                        <RechartsTooltip
+                          formatter={(value, name) => [
+                            `${value}%`, 
+                            name === "completionRate" ? "Completion Rate" : name
+                          ]}
+                        />
+                        <Bar 
+                          dataKey="completionRate" 
+                          name="Completion Rate" 
+                          fill={CHART_COLORS.inProgress} 
+                          radius={[4, 4, 0, 0]}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+          
+          <TabsContent value="time" className="space-y-4">
+            {/* Time-based analytics */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Card className="shadow-md hover:shadow-lg transition-all duration-300 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle>Avg. Time to Complete</CardTitle>
+                  <CardDescription>Average days to complete tasks by priority</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <TimeToCompleteChart data={analyticsData?.timeToCompleteAvg || []} loading={loading} />
+                </CardContent>
+              </Card>
+
+              <Card className="shadow-md hover:shadow-lg transition-all duration-300 backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle>Weekly Completion Rate</CardTitle>
+                  <CardDescription>Task completion rate over recent weeks</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <WeeklyCompletionChart data={analyticsData?.weeklyCompletionRate || []} loading={loading} />
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   );

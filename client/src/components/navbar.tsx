@@ -19,6 +19,7 @@ import { Task } from "@shared/schema";
 import { getInitials, getAvatarColor } from "@/lib/utils";
 import { useLocation } from "wouter";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { motion } from "framer-motion";
 
 interface NavbarProps {
   title: string;
@@ -46,9 +47,8 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
   const [searchResults, setSearchResults] = useState<Task[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const [showMobileSearch, setShowMobileSearch] = useState(false);
   
-  // Notifications completely removed
-
   // Handle search input changes with debounce
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -103,8 +103,8 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
 
   return (
     <header className="bg-background border-b border-border sticky top-0 backdrop-blur-sm bg-opacity-90 z-40 transition-all duration-200">
-      <div className="px-4 sm:px-6 lg:px-8 max-w-[1920px] mx-auto">
-        <div className="flex items-center justify-between h-16">
+      <div className="px-3 sm:px-6 lg:px-8 max-w-[1920px] mx-auto">
+        <div className="flex items-center justify-between h-14 sm:h-16">
           <div className="flex items-center">
             <TooltipProvider>
               <Tooltip>
@@ -113,8 +113,8 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
                     variant="ghost"
                     size="icon"
                     onClick={() => setSidebarOpen(!sidebarOpen)}
-                    className="text-muted-foreground hover:text-foreground focus:outline-none lg:hidden
-                      transition-transform duration-200 hover:bg-accent/50"
+                    className="text-muted-foreground hover:text-foreground focus:outline-none
+                      transition-transform duration-200 hover:bg-accent/50 mr-1"
                   >
                     {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
                   </Button>
@@ -125,18 +125,28 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
               </Tooltip>
             </TooltipProvider>
             
-            <div className="ml-4 lg:ml-0 flex items-center">
-              <div className="w-6 h-6 rounded-md bg-primary/90 mr-2 hidden md:flex items-center justify-center">
+            <div className="flex items-center">
+              <div className="w-6 h-6 rounded-md bg-primary/90 mr-2 hidden sm:flex items-center justify-center">
                 <span className="text-primary-foreground text-sm font-bold">T</span>
               </div>
-              <h1 className="text-xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+              <h1 className="text-lg sm:text-xl font-semibold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70 truncate max-w-[180px] sm:max-w-none">
                 {title || titles[location] || "TaskFlow"}
               </h1>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2 md:space-x-4">
-            {/* Search Form */}
+          <div className="flex items-center space-x-1 sm:space-x-2 md:space-x-4">
+            {/* Mobile Search Button */}
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="md:hidden"
+              onClick={() => setShowMobileSearch(!showMobileSearch)}
+            >
+              <Search className="h-5 w-5" />
+            </Button>
+            
+            {/* Desktop Search Form */}
             <div className="relative hidden md:block">
               <form onSubmit={handleSearch} className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -153,7 +163,7 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
                     // Delay hiding search results to allow clicking on them
                     setTimeout(() => setShowSearchResults(false), 200);
                   }}
-                  className={`pl-10 pr-3 py-2 w-56 lg:w-72 border-muted transition-all duration-200
+                  className={`pl-10 pr-3 py-1 md:py-2 w-44 lg:w-64 xl:w-72 border-muted transition-all duration-200
                     ${isSearchFocused ? 'border-primary ring-1 ring-primary/20' : 'hover:border-border'}`}
                   aria-label="Search tasks"
                 />
@@ -208,7 +218,7 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
                   <Button
                     size="sm"
                     onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                    className={`relative overflow-hidden transition-all duration-300 ease-in-out ${theme === "dark" 
+                    className={`relative hidden sm:flex overflow-hidden transition-all duration-300 ease-in-out ${theme === "dark" 
                       ? 'bg-gradient-to-br from-indigo-500/20 to-purple-600/20 text-amber-300 hover:text-amber-200 border border-indigo-600/30 hover:border-indigo-500/50 shadow-inner shadow-indigo-500/10' 
                       : 'bg-gradient-to-br from-amber-200/80 to-amber-400/80 text-indigo-700 hover:text-indigo-900 border border-amber-300 hover:border-amber-400 shadow shadow-amber-200/50'}`}
                     aria-label="Toggle theme"
@@ -237,6 +247,19 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+            
+            {/* Mobile Theme Toggle */}
+            <Button
+              variant="ghost" 
+              size="icon"
+              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              className="sm:hidden"
+            >
+              {theme === "dark" ? 
+                <Sun className="h-5 w-5 text-amber-300" /> : 
+                <Moon className="h-5 w-5 text-indigo-700" />
+              }
+            </Button>
 
             {/* User Profile Dropdown */}
             <DropdownMenu>
@@ -250,16 +273,18 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
                   <span className="hidden md:inline-block text-sm font-medium">{user?.name}</span>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuContent align="end" className="w-56 mt-1 bg-popover border border-border/80 shadow-lg">
+                <DropdownMenuLabel className="font-semibold">
+                  My Account
+                </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="cursor-pointer flex items-center gap-2" onClick={() => navigate('/profile')}>
+                <DropdownMenuItem onClick={() => navigate('/profile')} className="cursor-pointer gap-2">
                   <User className="h-4 w-4" />
                   <span>Profile</span>
                 </DropdownMenuItem>
                 
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-destructive focus:text-destructive flex items-center gap-2">
+                <DropdownMenuItem onClick={handleLogout} className="cursor-pointer gap-2 text-destructive">
                   <LogOut className="h-4 w-4" />
                   <span>Log out</span>
                 </DropdownMenuItem>
@@ -268,6 +293,77 @@ export function Navbar({ title, sidebarOpen, setSidebarOpen, onSearch }: NavbarP
           </div>
         </div>
       </div>
+      
+      {/* Mobile Search - Full width */}
+      {showMobileSearch && (
+        <motion.div 
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          exit={{ opacity: 0, height: 0 }}
+          className="px-4 py-2 border-t border-border md:hidden"
+        >
+          <form onSubmit={handleSearch} className="relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+              <Search className="h-4 w-4 text-muted-foreground" />
+            </div>
+            <Input
+              type="text"
+              placeholder="Search tasks..."
+              value={searchTerm}
+              onChange={handleSearchChange}
+              onFocus={() => setIsSearchFocused(true)}
+              className="pl-10 pr-10 py-2 w-full border-muted"
+              aria-label="Search tasks"
+            />
+            {isSearching ? (
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                <div className="animate-spin h-4 w-4 border-2 border-primary/20 border-t-primary rounded-full"></div>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-0 top-0 h-full"
+                onClick={() => setShowMobileSearch(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </form>
+          
+          {/* Mobile Search Results */}
+          {showSearchResults && searchTerm.trim() !== '' && (
+            <div className="mt-1 w-full bg-popover shadow-md rounded-md border border-border z-50 max-h-64 overflow-y-auto">
+              {searchResults.length > 0 ? (
+                <ul className="py-1">
+                  {searchResults.map((task) => (
+                    <li key={task.id} className="px-4 py-2 hover:bg-accent cursor-pointer" 
+                        onClick={() => {
+                          navigate(`/task-view/${task.id}`);
+                          setShowSearchResults(false);
+                          setShowMobileSearch(false);
+                        }}>
+                      <div className="font-medium text-sm">{task.title}</div>
+                      {task.description && (
+                        <div className="text-xs text-muted-foreground truncate">
+                          {task.description.length > 40
+                            ? `${task.description.substring(0, 40)}...`
+                            : task.description}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="px-4 py-3 text-sm text-muted-foreground text-center">
+                  No tasks found matching "{searchTerm}"
+                </div>
+              )}
+            </div>
+          )}
+        </motion.div>
+      )}
     </header>
   );
 }

@@ -229,9 +229,40 @@ export function setupAuth(app: Express, apiRouter?: Router) {
       console.log("Logging out user:", (req.user as any)?.id);
     }
     
+    // First call passport logout (BEFORE destroying session)
     req.logout((err) => {
-      if (err) return next(err);
-      res.sendStatus(200);
+      if (err) {
+        console.error("Error during passport logout:", err);
+        return next(err);
+      }
+      
+      // Then destroy the session
+      req.session.destroy((err) => {
+        if (err) {
+          console.error("Error destroying session:", err);
+          return next(err);
+        }
+        
+        // Clear the session cookie on the response
+        res.clearCookie('connect.sid', {
+          path: '/',
+          httpOnly: true,
+          secure: false,
+          sameSite: 'lax'
+        });
+        
+        console.log("User logged out successfully, session destroyed");
+        
+        // Return success response with cache control headers
+        res.status(200)
+          .set({
+            'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'Surrogate-Control': 'no-store'
+          })
+          .json({ success: true, message: "Logged out successfully" });
+      });
     });
   });
 

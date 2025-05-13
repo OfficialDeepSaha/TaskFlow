@@ -76,13 +76,13 @@ import {
   Activity,
   FileBarChart,
   Bell,
-  Shield
+  Shield,
+  RefreshCcw
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useLocation } from "wouter";
 import { apiRequest, normalizeApiUrl } from "@/lib/queryClient";
-import { Task, TaskStatus, RecurringPattern } from "../../../shared/schema";
-import { UserRole } from "../../../shared/schema";
+import { Task, TaskStatus, RecurringPattern, UserRole } from "../../../shared/schema";
 import { 
   Popover,
   PopoverContent,
@@ -103,6 +103,8 @@ import AssignedTasksPage from "./assigned-tasks-page";
 import { StatsCard } from "@/components/stats-card";
 import { ActivityTimeline } from "@/components/activity-timeline";
 import { TaskPriorityBadge } from "@/components/task-badge";
+import { cn } from "@/lib/utils";
+import { TaskStatCard } from "@/components/task-stat-card";
 
 // Add a utility function at the top of the file
 function isValidImage(image: any): boolean {
@@ -174,9 +176,9 @@ export default function DashboardPage() {
     // Create a wrapper that includes the needed layout components but just changes the content
     // This avoids duplicating the navbar and sidebar while still showing the user dashboard
     return (
-      <div className="space-y-8">
+      <div className="space-y-6">
         {/* User Dashboard Header */}
-        <div className="flex flex-col space-y-6">
+        <div className="flex flex-col space-y-4">
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -184,137 +186,93 @@ export default function DashboardPage() {
             className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4"
           >
             <div>
-              <h1 className="text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
-                Tasks Assigned to Me
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70">
+                My Dashboard
               </h1>
-              <p className="text-muted-foreground mt-1">
-                Welcome back, {user.name}! Here are your assigned tasks.
+              <p className="text-muted-foreground mt-1 text-sm sm:text-base">
+                Welcome back, {user.name}! Here's an overview of your tasks.
               </p>
             </div>
             
-            <div className="flex items-center gap-2">
-              {/* Only show New Task button for admin users */}
-              {user && user.role && user.role.toString() === "admin" && (
-                <Button 
-                  variant="outline" 
-                  className="flex items-center gap-2 border-dashed"
-                  onClick={handleOpenNewTaskDialog}
-                >
-                  <Plus className="h-4 w-4" />
-                  <span>New Task</span>
-                </Button>
-              )}
+            {/* Task search for mobile */}
+            <div className="w-full md:w-auto flex flex-col sm:flex-row items-center gap-2">
+              {/* <div className="relative w-full sm:w-auto">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search tasks..."
+                  className="pl-10 w-full sm:w-[200px] lg:w-[260px]"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div> */}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  console.log('Manual refresh requested');
+                  setIsLoadingTasks(true);
+                  loadTasks().finally(() => setIsLoadingTasks(false));
+                }}
+                disabled={isLoadingTasks}
+                className="h-10 w-10"
+              >
+                <Activity className={cn(
+                  "h-4 w-4",
+                  isLoadingTasks && "animate-spin"
+                )} />
+                <span className="sr-only">Refresh data</span>
+              </Button>
             </div>
           </motion.div>
         </div>
 
-        {/* User Dashboard Content */}
-        <div>
-          <AssignedTasksPage inDashboard={true} />
+        {/* User Dashboard Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Assigned Tasks */}
+          <TaskStatCard
+            title="Assigned Tasks"
+            icon={<ClipboardList />}
+            iconColor="blue"
+            statType="assigned"
+            description="Total tasks assigned to you"
+            delay={0.1}
+          />
+
+          {/* Completed Tasks */}
+          <TaskStatCard
+            title="Completed"
+            icon={<CheckCheck />}
+            iconColor="green"
+            statType="completed"
+            description="Completed tasks"
+            delay={0.2}
+          />
+
+          {/* In Progress Tasks */}
+          <TaskStatCard
+            title="In Progress"
+            icon={<Activity />}
+            iconColor="amber"
+            statType="in_progress"
+            description="Tasks in progress"
+            delay={0.3}
+          />
+
+          {/* Pending Tasks */}
+          <TaskStatCard
+            title="Pending"
+            icon={<Clock />}
+            iconColor="red"
+            statType="not_started"
+            description="Tasks not started"
+            delay={0.4}
+          />
         </div>
 
-        {/* New Task Dialog */}
-        <Dialog open={isNewTaskDialogOpen} onOpenChange={setIsNewTaskDialogOpen}>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>Create New Task</DialogTitle>
-              <DialogDescription>
-                Add a new task to your list.
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={createTask}>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="title">Task Title</Label>
-                  <Input 
-                    id="title" 
-                    value={newTask.title}
-                    onChange={(e) => setNewTask({...newTask, title: e.target.value})}
-                    placeholder="Enter task title"
-                    required
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea 
-                    id="description" 
-                    value={newTask.description}
-                    onChange={(e) => setNewTask({...newTask, description: e.target.value})}
-                    placeholder="Enter task description (optional)"
-                    className="h-20"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="grid gap-2">
-                    <Label htmlFor="priority">Priority</Label>
-                    <Select 
-                      value={newTask.priority}
-                      onValueChange={(value) => setNewTask({...newTask, priority: value})}
-                    >
-                      <SelectTrigger id="priority">
-                        <SelectValue placeholder="Select priority" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="low">Low</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="high">High</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid gap-2">
-                    <Label htmlFor="status">Status</Label>
-                    <Select 
-                      value={newTask.status}
-                      onValueChange={(value) => setNewTask({...newTask, status: value as TaskStatus})}
-                    >
-                      <SelectTrigger id="status">
-                        <SelectValue placeholder="Select status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="not_started">Not Started</SelectItem>
-                        <SelectItem value="in_progress">In Progress</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="dueDate">Due Date</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className="w-full justify-start text-left font-normal"
-                        id="dueDate"
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {newTask.dueDate ? format(newTask.dueDate, "PPP") : <span>Pick a date</span>}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={newTask.dueDate || undefined}
-                        onSelect={(date) => setNewTask({...newTask, dueDate: date || null})}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsNewTaskDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit">Create Task</Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {/* User Dashboard Content */}
+        <div className="mt-4">
+          <AssignedTasksPage inDashboard={true} />
+        </div>
       </div>
     );
   }
@@ -359,7 +317,7 @@ export default function DashboardPage() {
           setUsers([{ id: user.id, name: user.name }]);
         }
       }
-    }, 2000); // Only wait 2 seconds before killing the loader
+    }, 5000); // Increased timeout to 5 seconds to give more time for API calls
     
     // Start with a default state - avoids waiting for API to show UI
     if (users.length === 0 && user) {
@@ -371,35 +329,31 @@ export default function DashboardPage() {
       const loadData = async () => {
         try {
           setIsLoadingTasks(true);
+          console.log('Starting to load dashboard data...');
           
-          // Load users and tasks with separate timeouts
-          Promise.all([
-            Promise.race([
-              loadUsers().catch(err => {
-                console.error('Failed to load users:', err);
-                return user ? [{ id: user.id, name: user.name }] : [];
-              }),
-              new Promise(resolve => setTimeout(() => {
-                console.log('Users load timeout reached, using fallback');
-                resolve(user ? [{ id: user.id, name: user.name }] : []);
-              }, 1500))
-            ]),
-            
-            Promise.race([
-              loadTasks().catch(err => {
-                console.error('Failed to load tasks:', err);
-                return [];
-              }),
-              new Promise(resolve => setTimeout(() => {
-                console.log('Tasks load timeout reached, using empty list');
-                resolve([]);
-              }, 1500))
-            ])
-          ]).finally(() => {
-            if (isComponentMounted) {
-              setIsLoadingTasks(false);
+          // Load users and tasks independently to avoid one failing affecting the other
+          try {
+            const userData = await loadUsers();
+            console.log('Successfully loaded users');
+          } catch (err) {
+            console.error('Failed to load users, using fallback:', err);
+            if (user && users.length === 0) {
+              setUsers([{ id: user.id, name: user.name }]);
             }
-          });
+          }
+          
+          try {
+            const taskData = await loadTasks();
+            console.log('Successfully loaded tasks');
+          } catch (err) {
+            console.error('Failed to load tasks:', err);
+            setTasks([]);
+          }
+          
+          if (isComponentMounted) {
+            setIsLoadingTasks(false);
+            console.log('Finished loading dashboard data');
+          }
         } catch (error) {
           console.error('Error loading dashboard data:', error);
           if (isComponentMounted) {
@@ -494,20 +448,71 @@ export default function DashboardPage() {
   // Function to load tasks
   async function loadTasks() {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000); // Shorter timeout (5s)
+      console.log('Fetching tasks for user:', user?.id);
       
-      const response = await apiRequest('GET', '/api/tasks', undefined, 5000);
-      clearTimeout(timeoutId);
+      // For regular users, use the specialized endpoint for assigned tasks
+      const endpoint = user?.role === UserRole.USER 
+        ? '/api/tasks/assigned/me'
+        : '/api/tasks';
+        
+      console.log('Using tasks endpoint:', endpoint);
       
-      const fetchedTasks = await response.json() as Task[];
-      setTasks(fetchedTasks);
-      return fetchedTasks;
+      const response = await fetch(normalizeApiUrl(endpoint), {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
+        },
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch tasks: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('Received raw tasks data:', data);
+
+      // Ensure data is an array
+      const tasksArray = Array.isArray(data) ? data : [];
+      console.log('Converted to tasks array:', tasksArray);
+      
+      // Filter tasks assigned to current user only if regular user
+      // The backend should already filter for /assigned/me, but we'll double-check here
+      const userTasks = user?.role === UserRole.USER
+        ? tasksArray.filter(task => {
+            console.log('Checking task in loadTasks:', {
+              taskId: task.id,
+              title: task.title,
+              assignedToId: task.assignedToId,
+              userId: user?.id,
+              status: task.status
+            });
+            return task.assignedToId === user?.id;
+          })
+        : tasksArray;
+      
+      console.log('Filtered user tasks in loadTasks:', userTasks);
+      setTasks(userTasks);
+      
+      // Log task statistics using correct enum values
+      const stats = {
+        total: userTasks.length,
+        completed: userTasks.filter(t => t.status === TaskStatus.COMPLETED).length,
+        inProgress: userTasks.filter(t => t.status === TaskStatus.IN_PROGRESS).length,
+        notStarted: userTasks.filter(t => t.status === TaskStatus.NOT_STARTED).length
+      };
+      console.log('Task statistics in loadTasks:', stats);
+      
+      return userTasks;
     } catch (error) {
       console.error('Error loading tasks:', error);
-      
-      // Use empty tasks array as fallback
-      console.log('Using empty tasks array as fallback');
+      toast({
+        title: "Error loading tasks",
+        description: "Failed to load your tasks. Please try again.",
+        variant: "destructive",
+      });
       setTasks([]);
       return [];
     }
@@ -719,6 +724,47 @@ export default function DashboardPage() {
     return matchesTab && matchesSearch && matchesPriority && matchesDueDate && matchesAssignedTo;
   });
 
+  // Function to calculate task statistics
+  const getTaskStats = () => {
+    if (!user || !tasks) {
+      console.log('No user or tasks available for stats calculation');
+      return {
+        assigned: 0,
+        completed: 0,
+        inProgress: 0,
+        pending: 0
+      };
+    }
+
+    // Filter tasks assigned to current user
+    const userTasks = tasks.filter(task => {
+      console.log('Checking task for stats:', {
+        taskId: task.id,
+        title: task.title,
+        assignedToId: task.assignedToId,
+        userId: user.id,
+        status: task.status
+      });
+      return task.assignedToId === user.id;
+    });
+    
+    console.log('Filtered user tasks for stats:', userTasks);
+    
+    const stats = {
+      assigned: userTasks.length,
+      completed: userTasks.filter(t => t.status === TaskStatus.COMPLETED).length,
+      inProgress: userTasks.filter(t => t.status === TaskStatus.IN_PROGRESS).length,
+      pending: userTasks.filter(t => t.status === TaskStatus.NOT_STARTED).length
+    };
+    
+    console.log('Calculated task statistics:', stats);
+    
+    return stats;
+  };
+
+  // Update the stat cards to use the new getTaskStats function
+  const taskStats = getTaskStats();
+
   return (
     <div className="space-y-8">
       {/* Admin Dashboard Header */}
@@ -786,100 +832,278 @@ export default function DashboardPage() {
             className="grid gap-6 md:grid-cols-2 lg:grid-cols-4"
           >
             {/* Total Tasks */}
-            <Card className="hover:shadow-md transition-all duration-300 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-950/20 dark:to-transparent border-blue-100 dark:border-blue-900/30 overflow-hidden group">
-              <CardHeader className="pb-2">
-                <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-blue-100/80 dark:bg-blue-900/20 blur-2xl group-hover:blur-3xl transition-all duration-500"></div>
-                <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="text-3xl font-bold">{stats.total}</div>
-                    <p className="text-xs text-muted-foreground mt-1 flex items-center">
-                      <span className="text-blue-600 dark:text-blue-400 font-medium flex items-center mr-2">
-                        <Activity className="h-3 w-3 mr-1" /> +{stats.total > 0 ? Math.round((stats.inProgress / stats.total) * 100) : 0}%
-                      </span>
-                      since last week
-                    </p>
+            <motion.div
+              whileHover={{ 
+                scale: 1.02,
+                transition: { duration: 0.2 }
+              }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+            >
+              <Card className="overflow-hidden border-none shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-blue-50/40 via-blue-50/20 to-transparent dark:from-blue-950/30 dark:via-blue-900/10 dark:to-transparent backdrop-blur-sm">
+                <CardHeader className="pb-2 relative">
+                  <div className="absolute -right-12 -top-12 w-32 h-32 rounded-full bg-blue-200/30 dark:bg-blue-800/20 blur-3xl group-hover:blur-3xl transition-all duration-500 animate-pulse"></div>
+                  <CardTitle className="text-sm font-medium text-blue-700/70 dark:text-blue-300/70 flex items-center">
+                    <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-md mr-2">
+                      <ClipboardList className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    Total Tasks
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ 
+                          duration: 0.5, 
+                          delay: 0.2,
+                          type: "spring",
+                          stiffness: 100
+                        }}
+                        className="text-3xl font-bold bg-gradient-to-br from-blue-700 to-blue-500 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent"
+                      >
+                        {stats.total}
+                      </motion.div>
+                      <p className="text-xs text-muted-foreground mt-1 flex items-center">
+                        <span className="text-blue-600 dark:text-blue-400 font-medium flex items-center mr-2">
+                          <Activity className="h-3 w-3 mr-1" /> 
+                          <motion.span 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ duration: 0.3, delay: 0.4 }}
+                          >
+                            +{stats.total > 0 ? Math.round((stats.inProgress / stats.total) * 100) : 0}%
+                          </motion.span>
+                        </span>
+                        <span className="opacity-70">since last week</span>
+                      </p>
+                    </div>
+                    <motion.div 
+                      initial={{ scale: 0, rotate: -30, opacity: 0 }}
+                      animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                      transition={{ 
+                        duration: 0.6, 
+                        delay: 0.3,
+                        type: "spring", 
+                        bounce: 0.4
+                      }}
+                      className="h-12 w-12 rounded-xl bg-gradient-to-br from-blue-100 to-blue-50 dark:from-blue-800/40 dark:to-blue-900/20 flex items-center justify-center shadow-md"
+                      whileHover={{ 
+                        rotate: 5, 
+                        scale: 1.1,
+                        transition: { duration: 0.2 }
+                      }}
+                    >
+                      <ClipboardList className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                    </motion.div>
                   </div>
-                  <div className="h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                    <ClipboardList className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </motion.div>
 
             {/* Tasks Completed */}
-            <Card className="hover:shadow-md transition-all duration-300 bg-gradient-to-br from-green-50/50 to-transparent dark:from-green-950/20 dark:to-transparent border-green-100 dark:border-green-900/30 overflow-hidden group">
-              <CardHeader className="pb-2">
-                <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-green-100/80 dark:bg-green-900/20 blur-2xl group-hover:blur-3xl transition-all duration-500"></div>
-                <CardTitle className="text-sm font-medium">Completed Tasks</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="text-3xl font-bold">{stats.completed}</div>
-                    <p className="text-xs text-muted-foreground mt-1 flex items-center">
-                      <span className="text-green-600 dark:text-green-400 font-medium flex items-center mr-2">
-                        <Activity className="h-3 w-3 mr-1" /> +{stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%
-                      </span>
-                      completion rate
-                    </p>
+            <motion.div
+              whileHover={{ 
+                scale: 1.02,
+                transition: { duration: 0.2 }
+              }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+            >
+              <Card className="overflow-hidden border-none shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-green-50/40 via-green-50/20 to-transparent dark:from-green-950/30 dark:via-green-900/10 dark:to-transparent backdrop-blur-sm">
+                <CardHeader className="pb-2 relative">
+                  <div className="absolute -right-12 -top-12 w-32 h-32 rounded-full bg-green-200/30 dark:bg-green-800/20 blur-3xl transition-all duration-500 animate-pulse"></div>
+                  <CardTitle className="text-sm font-medium text-green-700/70 dark:text-green-300/70 flex items-center">
+                    <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded-md mr-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    </div>
+                    Completed Tasks
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ 
+                          duration: 0.5, 
+                          delay: 0.2,
+                          type: "spring",
+                          stiffness: 100
+                        }}
+                        className="text-3xl font-bold bg-gradient-to-br from-green-700 to-green-500 dark:from-green-400 dark:to-green-600 bg-clip-text text-transparent"
+                      >
+                        {stats.completed}
+                      </motion.div>
+                      <p className="text-xs text-muted-foreground mt-1 flex items-center">
+                        <span className="text-green-600 dark:text-green-400 font-medium flex items-center mr-2">
+                          <Activity className="h-3 w-3 mr-1" /> 
+                          <motion.span 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ duration: 0.3, delay: 0.4 }}
+                          >
+                            +{stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%
+                          </motion.span>
+                        </span>
+                        <span className="opacity-70">completion rate</span>
+                      </p>
+                    </div>
+                    <motion.div 
+                      initial={{ scale: 0, rotate: -30, opacity: 0 }}
+                      animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                      transition={{ 
+                        duration: 0.6, 
+                        delay: 0.3,
+                        type: "spring", 
+                        bounce: 0.4
+                      }}
+                      className="h-12 w-12 rounded-xl bg-gradient-to-br from-green-100 to-green-50 dark:from-green-800/40 dark:to-green-900/20 flex items-center justify-center shadow-md"
+                      whileHover={{ 
+                        rotate: 5, 
+                        scale: 1.1,
+                        transition: { duration: 0.2 }
+                      }}
+                    >
+                      <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
+                    </motion.div>
                   </div>
-                  <div className="h-12 w-12 rounded-full bg-green-100 dark:bg-green-900/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                    <CheckCircle2 className="h-6 w-6 text-green-600 dark:text-green-400" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </motion.div>
 
             {/* In Progress Tasks */}
-            <Card className="hover:shadow-md transition-all duration-300 bg-gradient-to-br from-amber-50/50 to-transparent dark:from-amber-950/20 dark:to-transparent border-amber-100 dark:border-amber-900/30 overflow-hidden group">
-              <CardHeader className="pb-2">
-                <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-amber-100/80 dark:bg-amber-900/20 blur-2xl group-hover:blur-3xl transition-all duration-500"></div>
-                <CardTitle className="text-sm font-medium">In Progress</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="text-3xl font-bold">{stats.inProgress}</div>
-                    <p className="text-xs text-muted-foreground mt-1 flex items-center">
-                      <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center mr-2">
-                        <Clock className="h-3 w-3 mr-1" /> {stats.inProgress} tasks
-                      </span>
-                      awaiting completion
-                    </p>
+            <motion.div
+              whileHover={{ 
+                scale: 1.02,
+                transition: { duration: 0.2 }
+              }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.3 }}
+            >
+              <Card className="overflow-hidden border-none shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-amber-50/40 via-amber-50/20 to-transparent dark:from-amber-950/30 dark:via-amber-900/10 dark:to-transparent backdrop-blur-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-amber-700/70 dark:text-amber-300/70 flex items-center justify-between">
+                    <div className="flex items-center">
+                      <div className="bg-amber-100 dark:bg-amber-900/30 p-2 rounded-md mr-2">
+                        <Activity className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      In Progress
+                    </div>
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-6 w-6 rounded-full hover:bg-amber-100 dark:hover:bg-amber-900/30"
+                      onClick={() => {
+                        console.log('Refreshing in-progress tasks count');
+                        setIsLoadingTasks(true);
+                        loadTasks().finally(() => setIsLoadingTasks(false));
+                      }}
+                    >
+                      <RefreshCcw className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+                    </Button>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <div className="text-2xl sm:text-3xl font-bold text-amber-600 dark:text-amber-400">
+                        {isLoadingTasks ? (
+                          <div className="animate-pulse h-8 w-8 rounded-full border-2 border-amber-400 border-t-transparent"></div>
+                        ) : (
+                          tasks.filter(t => t.assignedToId === user.id && t.status === TaskStatus.IN_PROGRESS).length
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Tasks in progress
+                      </p>
+                    </div>
+                    <div className="h-10 w-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shadow-inner">
+                      <Activity className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                    </div>
                   </div>
-                  <div className="h-12 w-12 rounded-full bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                    <ListTodo className="h-6 w-6 text-amber-600 dark:text-amber-400" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </motion.div>
 
             {/* Team Members */}
-            <Card className="hover:shadow-md transition-all duration-300 bg-gradient-to-br from-purple-50/50 to-transparent dark:from-purple-950/20 dark:to-transparent border-purple-100 dark:border-purple-900/30 overflow-hidden group">
-              <CardHeader className="pb-2">
-                <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full bg-purple-100/80 dark:bg-purple-900/20 blur-2xl group-hover:blur-3xl transition-all duration-500"></div>
-                <CardTitle className="text-sm font-medium">Team Members</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex justify-between items-center">
-                  <div>
-                    <div className="text-3xl font-bold">{users.length}</div>
-                    <p className="text-xs text-muted-foreground mt-1 flex items-center">
-                      <span className="text-purple-600 dark:text-purple-400 font-medium flex items-center mr-2">
-                        <UserCheck className="h-3 w-3 mr-1" /> {users.length} active
-                      </span>
-                      team members
-                    </p>
+            <motion.div
+              whileHover={{ 
+                scale: 1.02,
+                transition: { duration: 0.2 }
+              }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.4 }}
+            >
+              <Card className="overflow-hidden border-none shadow-lg hover:shadow-xl transition-all duration-300 bg-gradient-to-br from-purple-50/40 via-purple-50/20 to-transparent dark:from-purple-950/30 dark:via-purple-900/10 dark:to-transparent backdrop-blur-sm">
+                <CardHeader className="pb-2 relative">
+                  <div className="absolute -right-12 -top-12 w-32 h-32 rounded-full bg-purple-200/30 dark:bg-purple-800/20 blur-3xl transition-all duration-500 animate-pulse"></div>
+                  <CardTitle className="text-sm font-medium text-purple-700/70 dark:text-purple-300/70 flex items-center">
+                    <div className="bg-purple-100 dark:bg-purple-900/30 p-2 rounded-md mr-2">
+                      <Users className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    Team Members
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ 
+                          duration: 0.5, 
+                          delay: 0.2,
+                          type: "spring",
+                          stiffness: 100
+                        }}
+                        className="text-3xl font-bold bg-gradient-to-br from-purple-700 to-purple-500 dark:from-purple-400 dark:to-purple-600 bg-clip-text text-transparent"
+                      >
+                        {users.length}
+                      </motion.div>
+                      <p className="text-xs text-muted-foreground mt-1 flex items-center">
+                        <span className="text-purple-600 dark:text-purple-400 font-medium flex items-center mr-2">
+                          <UserCheck className="h-3 w-3 mr-1" /> 
+                          <motion.span 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            transition={{ duration: 0.3, delay: 0.4 }}
+                          >
+                            {users.length} active
+                          </motion.span>
+                        </span>
+                        <span className="opacity-70">team members</span>
+                      </p>
+                    </div>
+                    <motion.div 
+                      initial={{ scale: 0, rotate: -30, opacity: 0 }}
+                      animate={{ scale: 1, rotate: 0, opacity: 1 }}
+                      transition={{ 
+                        duration: 0.6, 
+                        delay: 0.3,
+                        type: "spring", 
+                        bounce: 0.4
+                      }}
+                      className="h-12 w-12 rounded-xl bg-gradient-to-br from-purple-100 to-purple-50 dark:from-purple-800/40 dark:to-purple-900/20 flex items-center justify-center shadow-md"
+                      whileHover={{ 
+                        rotate: 5, 
+                        scale: 1.1,
+                        transition: { duration: 0.2 }
+                      }}
+                    >
+                      <Users className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                    </motion.div>
                   </div>
-                  <div className="h-12 w-12 rounded-full bg-purple-100 dark:bg-purple-900/50 flex items-center justify-center group-hover:scale-110 transition-transform duration-300">
-                    <Users className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

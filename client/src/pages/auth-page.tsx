@@ -57,8 +57,27 @@ export default function AuthPage() {
   
   // Clear any existing session cookies when auth page loads
   useEffect(() => {
+    // Clear all authentication state
     clearSessionCookie();
-    console.log('Session cookies cleared on auth page load');
+    
+    // Reset query client state
+    queryClient.clear();
+    queryClient.setQueryData(["/api/user"], null);
+    
+    // Check if user navigated here from another page (not directly)
+    const cameFomAnotherPage = document.referrer && 
+      document.referrer.includes(window.location.hostname);
+    
+    // If user came from another page in our app, clear state more aggressively
+    if (cameFomAnotherPage) {
+      console.log('User navigated from another page, forcing state reset');
+      // Force a page reload to ensure complete cleanup
+      if (window.history.length > 1) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+    }
+    
+    console.log('Session cookies and authentication state cleared on auth page load');
   }, []);
   
   // Login form

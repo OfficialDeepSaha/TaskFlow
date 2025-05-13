@@ -17,16 +17,37 @@ export function setSessionCookie(sessionId: string) {
 
 // Clear the session cookie and remove from localStorage (for logout)
 export function clearSessionCookie() {
-  // Set cookie expiration to past date to remove it
+  // Clear the main session cookie
   document.cookie = 'connect.sid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
-  console.log('Session cookie cleared: connect.sid');
+  
+  // Also clear it from root path and all subpaths to ensure it's completely removed
+  document.cookie = 'connect.sid=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax; domain=' + window.location.hostname;
+  document.cookie = 'connect.sid=; path=/auth; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+  document.cookie = 'connect.sid=; path=/dashboard; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+  document.cookie = 'connect.sid=; path=/api; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+  
+  // Clear any other authentication-related cookies
+  document.cookie = 'sessionToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+  document.cookie = 'userToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax';
+  
+  console.log('All session cookies cleared');
   
   // Remove backup from localStorage
   try {
     localStorage.removeItem('connect.sid.backup');
-    console.log('Session backup removed from localStorage');
+    localStorage.removeItem('taskflow.session');
+    localStorage.removeItem('taskflow.user');
+    console.log('Session backup and all auth data removed from localStorage');
   } catch (e) {
     console.error('Could not remove session backup from localStorage', e);
+  }
+  
+  // Clear session storage as well
+  try {
+    sessionStorage.clear();
+    console.log('Session storage cleared');
+  } catch (e) {
+    console.error('Could not clear session storage', e);
   }
 }
 
