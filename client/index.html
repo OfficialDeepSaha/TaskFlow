@@ -6,9 +6,11 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="TaskFlow - Task Management Application" />
+    <link rel="manifest" href="/manifest.json" />
     <base href="/" />
     <title>TaskFlow</title>
     <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="apple-touch-icon" href="/icons/icon-192x192.png">
     <!-- Preload key resources to avoid render issues -->
     <link rel="preload" href="/assets/index.css" as="style">
     <link rel="preload" href="/assets/index.js" as="script">
@@ -25,6 +27,22 @@
     <div id="root"></div>
     <!-- WebSocket functionality has been removed -->
     <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- PWA registration script - inline for faster loading -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js')
+            .then(function(registration) {
+              console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            })
+            .catch(function(error) {
+              console.log('ServiceWorker registration failed: ', error);
+            });
+        });
+      }
+    </script>
+    
     <!-- This is a replit script which adds a banner on the top of the page when opened in development mode outside the replit environment -->
     <script type="text/javascript" src="https://replit.com/public/js/replit-dev-banner.js"></script>
   </body>

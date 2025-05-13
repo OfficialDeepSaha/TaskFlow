@@ -1,300 +1,356 @@
-// Service Worker for Team Task Tracker PWA
-const CACHE_NAME = 'team-task-tracker-v2';
-const STATIC_CACHE_NAME = 'team-task-tracker-static-v2';
-const API_CACHE_NAME = 'team-task-tracker-api-v2';
+// Service Worker for TaskFlow - Simple but Reliable PWA Implementation
+const CACHE_VERSION = 'v5';
+const CACHE_NAME = `taskflow-${CACHE_VERSION}`;
 
-// Assets that should be available offline
+// All assets we want to cache for offline use
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/assets/index.css',
-  '/assets/index-sz8t-6m0.js',
-  '/assets/vendor.D9FakB_Q.js',
-  '/icons/icon-192x192.png',
-  '/icons/icon-512x512.png',
-  '/offline.html'
+  '/offline.html',
+  '/favicon.ico',
 ];
 
-// API routes to cache for offline use
-const API_ROUTES_TO_CACHE = [
-  '/api/tasks',
-  '/api/user'
-];
+// Simple event logging for debugging
+function logEvent(eventName, details = '') {
+  console.log(`[SW ${CACHE_VERSION}] ${eventName}${details ? ': ' + details : ''}`);
+}
 
-// Create empty offline.html if it doesn't exist
+// ====== INSTALLATION - Cache all needed assets ======
 self.addEventListener('install', event => {
-  event.waitUntil(
-    fetch('/offline.html')
-      .catch(() => new Response(
-        '<html><head><title>Offline</title></head><body><h1>You are offline</h1><p>Please check your internet connection and try again.</p></body></html>',
-        { headers: { 'Content-Type': 'text/html' } }
-      ))
-  );
-})
-
-// Install event - cache assets
-self.addEventListener('install', (event) => {
-  // Cache static assets
-  const cacheStaticAssets = caches.open(STATIC_CACHE_NAME)
-    .then((cache) => {
-      console.log('Caching static assets');
-      return cache.addAll(ASSETS_TO_CACHE);
-    });
+  logEvent('install', 'Starting service worker installation');
   
-  // Pre-cache API responses if needed
-  const cacheAPIAssets = caches.open(API_CACHE_NAME)
-    .then((cache) => {
-      console.log('Setting up API cache');
-      // We're not pre-caching API responses, just setting up the cache
-      return Promise.resolve();
-    });
-  
-  event.waitUntil(Promise.all([cacheStaticAssets, cacheAPIAssets]));
-  
-  // Force activation without waiting for all tabs to close
+  // Skip waiting immediately to take control
   self.skipWaiting();
+  
+  // Cache all critical assets
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => {
+      logEvent('install', `Caching ${ASSETS_TO_CACHE.length} critical assets`);
+      return cache.addAll(ASSETS_TO_CACHE);
+    })
+    .then(() => {
+      logEvent('install', 'Service worker installation complete');
+    })
+    .catch(error => {
+      console.error('[SW ERROR] Installation failed:', error);
+    })
+  );
 });
 
-// Activate event - clean up old caches
-self.addEventListener('activate', (event) => {
-  const currentCaches = [STATIC_CACHE_NAME, API_CACHE_NAME];
+// ====== ACTIVATION - Clean up old caches and take control ======
+self.addEventListener('activate', event => {
+  logEvent('activate', 'Service worker activating');
   
+  // Clean up old caches
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
+    caches.keys().then(cacheNames => {
       return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (!currentCaches.includes(cacheName)) {
-            console.log('Deleting outdated cache:', cacheName);
-            return caches.delete(cacheName);
-          }
+        cacheNames.filter(cacheName => {
+          return cacheName.startsWith('taskflow-') && cacheName !== CACHE_NAME;
+        }).map(cacheName => {
+          logEvent('activate', `Deleting old cache: ${cacheName}`);
+          return caches.delete(cacheName);
         })
       );
     })
     .then(() => {
-      // Claim control of all clients under this service worker's scope
-      // This ensures the SW controls clients immediately without reload
-      console.log('Service Worker activated and taking control');
+      // Take control of all clients/pages immediately
+      logEvent('activate', 'Taking control of all pages');
       return self.clients.claim();
+    })
+    .catch(error => {
+      console.error('[SW ERROR] Activation failed:', error);
     })
   );
 });
 
-// Fetch event - advanced caching strategies based on request type
-self.addEventListener('fetch', (event) => {
-  // Skip non-HTTP/HTTPS requests
+// ====== FETCH - Handle all network requests ======
+self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+  
+  // Skip requests to other domains
+  if (url.origin !== location.origin) {
     return;
   }
-
-  // Skip WebSocket requests
-  if (event.request.url.includes('/ws') || 
-      event.request.url.includes('websocket') || 
-      event.request.headers.get('Upgrade') === 'websocket') {
-    return;
-  }
-
-  // Skip non-GET requests except for task operations that should be queued while offline
+  
+  // Skip non-GET requests
   if (event.request.method !== 'GET') {
-    // For task operations, let them fail normally to be handled by the application code
-    // which will queue them in IndexedDB for later sync
-    if (event.request.url.includes('/api/tasks')) {
-      // Let the request continue and be handled by the application
-      return;
-    }
-    // For other non-GET requests, proceed without special handling
     return;
   }
-
-  // For navigation requests (HTML documents), use a network-first strategy
-  // with a fallback to the offline page
+  
+  // Log the request for debugging
+  logEvent('fetch', `${event.request.method} ${url.pathname}`);
+  
+  // Special handling for navigation requests (loading a page)
   if (event.request.mode === 'navigate') {
+    logEvent('fetch', `Navigation request: ${url.pathname}`);
     event.respondWith(
+      // First try the network
       fetch(event.request)
-        .catch(() => {
-          return caches.match('/offline.html');
+        .then(response => {
+          // If we got a valid response, clone it and cache it
+          if (response && response.status === 200) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME)
+              .then(cache => {
+                logEvent('fetch', `Caching navigation response: ${url.pathname}`);
+                cache.put(event.request, responseToCache);
+              });
+          }
+          return response;
+        })
+        .catch(error => {
+          logEvent('fetch', `Navigation request failed: ${error.message}`);
+          
+          // If network request fails, try to get from cache
+          return caches.match(event.request)
+            .then(cachedResponse => {
+              if (cachedResponse) {
+                logEvent('fetch', `Serving navigation from cache: ${url.pathname}`);
+                return cachedResponse;
+              }
+              
+              // If not in cache, try the home page
+              return caches.match('/')
+                .then(homeResponse => {
+                  if (homeResponse) {
+                    logEvent('fetch', 'Serving homepage from cache as fallback');
+                    return homeResponse;
+                  }
+                  
+                  // Last resort - offline page
+                  logEvent('fetch', 'Serving offline page as last resort');
+                  return caches.match('/offline.html');
+                });
+            });
         })
     );
     return;
   }
-
-  // For API requests, use a network-first strategy with cached fallback
-  if (event.request.url.includes('/api/')) {
+  
+  // For API requests, use a network-first strategy with JSON fallback
+  if (url.pathname.startsWith('/api/')) {
+    logEvent('fetch', `API request: ${url.pathname}`);
     event.respondWith(
       fetch(event.request)
-        .then((response) => {
-          // Cache successful API responses
+        .then(response => {
+          // Cache all successful API responses
           if (response.status === 200) {
-            const responseClone = response.clone();
-            caches.open(API_CACHE_NAME).then((cache) => {
-              try {
-                // Don't cache tasks that should be queued while offline
-                if (!event.request.url.includes('/api/tasks')) {
-                  cache.put(event.request, responseClone);
-                }
-              } catch (error) {
-                console.error('Failed to cache API response:', error);
-              }
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME).then(cache => {
+              logEvent('fetch', `Caching API response: ${url.pathname}`);
+              cache.put(event.request, responseToCache);
             });
           }
           return response;
         })
-        .catch(() => {
-          // If network request fails, try to serve from cache
-          return caches.match(event.request).then((cachedResponse) => {
-            if (cachedResponse) {
-              return cachedResponse;
-            }
-            
-            // For failed API requests while offline, return structured error
-            return new Response(
-              JSON.stringify({
-                error: true,
-                message: 'You are currently offline. Your changes will sync when you reconnect.',
-                isOffline: true,
-                timestamp: Date.now()
-              }),
-              {
-                headers: { 'Content-Type': 'application/json' },
-                status: 503,
-                statusText: 'Service Unavailable'
+        .catch(error => {
+          logEvent('fetch', `API request failed: ${error.message}`);
+          
+          // Try to get from cache first
+          return caches.match(event.request)
+            .then(cachedResponse => {
+              if (cachedResponse) {
+                logEvent('fetch', `Serving API from cache: ${url.pathname}`);
+                return cachedResponse;
               }
-            );
-          });
+              
+              // If no cached response, return empty data that won't break the UI
+              let emptyData = [];
+              
+              // Different empty data structures for different endpoints
+              if (url.pathname.includes('/tasks')) {
+                emptyData = [];
+              } else if (url.pathname.includes('/users')) {
+                emptyData = [];
+              } else if (url.pathname.includes('/analytics')) {
+                if (url.pathname.includes('/summary')) {
+                  emptyData = {
+                    totalTasks: 0,
+                    completedTasks: 0,
+                    inProgressTasks: 0,
+                    pendingTasks: 0,
+                    overdueTasks: 0
+                  };
+                } else {
+                  emptyData = [];
+                }
+              } else {
+                emptyData = [];
+              }
+              
+              logEvent('fetch', `Returning empty fallback data for API: ${url.pathname}`);
+              return new Response(JSON.stringify(emptyData), {
+                status: 200,
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Offline-Fallback': 'true'
+                }
+              });
+            });
         })
     );
     return;
   }
-
-  // For static assets (CSS, JS, images), use a cache-first strategy
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
-      
-      // If not found in cache, fetch from network
-      return fetch(event.request).then((response) => {
-        // Don't cache non-successful responses
-        if (!response || response.status !== 200) {
-          return response;
-        }
-
-        // Cache successful responses for static assets
-        const responseClone = response.clone();
-        caches.open(STATIC_CACHE_NAME).then((cache) => {
-          try {
-            cache.put(event.request, responseClone);
-          } catch (error) {
-            console.error('Failed to cache static asset:', error);
+  
+  // For JavaScript files (app code), use cache-first strategy
+  if (url.pathname.endsWith('.js') || url.pathname.includes('/assets/')) {
+    logEvent('fetch', `Asset request: ${url.pathname}`);
+    event.respondWith(
+      caches.match(event.request)
+        .then(cachedResponse => {
+          // If found in cache, return it
+          if (cachedResponse) {
+            logEvent('fetch', `Serving asset from cache: ${url.pathname}`);
+            return cachedResponse;
           }
-        });
-
-        return response;
-      })
-      .catch(error => {
-        console.error('Failed to fetch asset:', error);
+          
+          // If not found in cache, fetch from network and cache
+          return fetch(event.request)
+            .then(response => {
+              // Don't cache bad responses
+              if (!response || response.status !== 200) {
+                return response;
+              }
+              
+              // Clone the response and cache it
+              const responseToCache = response.clone();
+              caches.open(CACHE_NAME).then(cache => {
+                logEvent('fetch', `Caching asset: ${url.pathname}`);
+                cache.put(event.request, responseToCache);
+              });
+              
+              return response;
+            })
+            .catch(error => {
+              logEvent('fetch', `Asset request failed: ${error.message}`);
+              console.error('Failed to fetch asset:', error);
+              
+              // For CSS, return empty CSS to prevent rendering errors
+              if (url.pathname.endsWith('.css')) {
+                return new Response('/* Offline fallback CSS */', {
+                  headers: { 'Content-Type': 'text/css' }
+                });
+              }
+              
+              // For JS, return an empty function to prevent errors
+              if (url.pathname.endsWith('.js')) {
+                return new Response(
+                  '/* Offline fallback JS */ console.log("[Offline] Failed to load script");',
+                  { headers: { 'Content-Type': 'application/javascript' } }
+                );
+              }
+              
+              // For fonts/images, return empty response
+              if (url.pathname.match(/\.(woff|woff2|ttf|png|jpg|jpeg|gif|svg)$/i)) {
+                return new Response('', { status: 200 });
+              }
+              
+              throw error;
+            });
+        })
+    );
+    return;
+  }
+  
+  // Default fetch handler for everything else - cache first, network fallback
+  event.respondWith(
+    caches.match(event.request)
+      .then(cachedResponse => {
+        if (cachedResponse) {
+          logEvent('fetch', `Serving from cache: ${url.pathname}`);
+          return cachedResponse;
+        }
         
-        // For font requests or certain assets, we can show a fallback
-        if (event.request.url.includes('.woff') || 
-            event.request.url.includes('.ttf') ||
-            event.request.url.includes('.svg')) {
-          // Return a minimal response - browsers will use system fonts
-          return new Response('', {
-            status: 404,
-            statusText: 'Not Found'
+        return fetch(event.request)
+          .then(response => {
+            // Only cache successful responses
+            if (response && response.status === 200) {
+              const responseToCache = response.clone();
+              caches.open(CACHE_NAME).then(cache => {
+                logEvent('fetch', `Caching: ${url.pathname}`);
+                cache.put(event.request, responseToCache);
+              });
+            }
+            return response;
+          })
+          .catch(error => {
+            logEvent('fetch', `Request failed: ${error.message}`);
+            console.error('Network request failed:', error);
+            
+            // Return a fallback for specific file types
+            const ext = url.pathname.split('.').pop();
+            if (['css', 'js', 'jpg', 'png', 'gif', 'svg', 'woff', 'woff2'].includes(ext)) {
+              return new Response('/* Offline fallback content */', {
+                status: 200,
+                headers: { 'Content-Type': ext === 'css' ? 'text/css' : 'application/javascript' }
+              });
+            }
+            
+            throw error;
           });
-        }
-        
-        // For image requests, we could return a placeholder image
-        if (event.request.url.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
-          return caches.match('/icons/placeholder.png')
-            .catch(() => new Response('Image not available offline', {
-              status: 404,
-              statusText: 'Not Found'
-            }));
-        }
-        
-        // Otherwise, just propagate the error
-        throw error;
-      });
-    })
+      })
   );
 });
 
-// Handle messages from client (e.g., skip waiting)
-self.addEventListener('message', (event) => {
-  if (event.data === 'skipWaiting') {
+// Listen for messages from the client (e.g., to skip waiting)
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    logEvent('message', 'Received skip waiting command - activating immediately');
     self.skipWaiting();
   }
 });
 
-// Sync event for deferred operations when back online
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-tasks') {
-    event.waitUntil(syncTasks());
-  }
+// Send a message to all controlled clients
+function sendMessageToClients(message) {
+  self.clients.matchAll().then(clients => {
+    clients.forEach(client => {
+      client.postMessage(message);
+    });
+  });
+}
+
+// ====== PUSH NOTIFICATION HANDLING ======
+self.addEventListener('push', event => {
+  logEvent('push', 'Received push notification');
+  
+  const notificationData = event.data ? event.data.json() : { title: 'New Notification', body: 'Something happened in TaskFlow!' };
+  
+  const showNotification = self.registration.showNotification(notificationData.title, {
+    body: notificationData.body,
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-192x192.png',
+    data: notificationData
+  });
+  
+  event.waitUntil(showNotification);
 });
 
-// Function to sync pending tasks when back online
-async function syncTasks() {
-  try {
-    // Get pending tasks from IndexedDB
-    const pendingTasks = await getPendingTasks();
-    
-    // Process each pending task
-    for (const task of pendingTasks) {
-      switch (task.operation) {
-        case 'create':
-          await sendToServer('/api/tasks', 'POST', task.data);
-          break;
-        case 'update':
-          await sendToServer(`/api/tasks/${task.data.id}`, 'PATCH', task.data);
-          break;
-        case 'delete':
-          await sendToServer(`/api/tasks/${task.data.id}`, 'DELETE');
-          break;
-      }
-      
-      // Mark task as synced
-      await markTaskAsSynced(task.id);
-    }
-    
-    // Notify clients that sync is complete
-    self.clients.matchAll().then(clients => {
-      clients.forEach(client => {
-        client.postMessage({
-          type: 'sync-complete',
-          count: pendingTasks.length
-        });
-      });
-    });
-    
-  } catch (error) {
-    console.error('Error syncing tasks:', error);
-  }
-}
+// Handle notification clicks
+self.addEventListener('notificationclick', event => {
+  logEvent('notificationclick', 'Notification clicked');
+  
+  event.notification.close();
+  
+  // Navigate to the app when the notification is clicked
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window' })
+      .then(clientList => {
+        // If a window client is already open, focus it
+        for (const client of clientList) {
+          if (client.url.includes(self.location.origin) && 'focus' in client) {
+            return client.focus();
+          }
+        }
+        
+        // Otherwise open a new window
+        if (self.clients.openWindow) {
+          return self.clients.openWindow('/');
+        }
+      })
+  );
+});
 
-// Placeholder functions for IndexedDB operations
-// These would be implemented in the actual IndexedDB utility file
-async function getPendingTasks() {
-  // This is a placeholder - would fetch from IndexedDB in the actual implementation
-  return [];
-}
-
-async function markTaskAsSynced(id) {
-  // This is a placeholder - would update in IndexedDB in the actual implementation
-}
-
-async function sendToServer(url, method, data) {
-  // This is a placeholder - would actually make network request in the implementation
-  const response = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: data ? JSON.stringify(data) : undefined
-  });
-  return response.json();
-}
+// Log successful installation
+logEvent('loaded', `Service Worker (${CACHE_VERSION}) loaded successfully`);

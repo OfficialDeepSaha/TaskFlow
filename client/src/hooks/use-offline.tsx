@@ -18,13 +18,45 @@ export function useOffline() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSyncing, setIsSyncing] = useState(false);
   const [pendingActions, setPendingActions] = useState(0);
+  const [hasNetworkError, setHasNetworkError] = useState(false);
+
+  // Function to actively check network connectivity by making a small fetch request
+  const checkNetworkConnection = useCallback(async () => {
+    try {
+      // Try to fetch a small file with a cache-busting parameter
+      const response = await fetch('/manifest.json?_=' + Date.now(), {
+        method: 'HEAD',
+        // Short timeout to detect slow connections quickly
+        signal: AbortSignal.timeout(5000),
+        // Prevent caching
+        cache: 'no-store'
+      });
+      
+      const isConnected = response.ok;
+      setIsOnline(isConnected);
+      setHasNetworkError(!isConnected);
+      return isConnected;
+    } catch (error) {
+      // Network error occurred
+      console.warn('Network connectivity check failed:', error);
+      setIsOnline(false);
+      setHasNetworkError(true);
+      return false;
+    }
+  }, []);
 
   // Update online status
   useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      // Automatically attempt to sync pending operations when coming back online
-      syncPendingOperations();
+    const handleOnline = async () => {
+      // Verify the connection with an actual network request
+      const isReallyConnected = await checkNetworkConnection();
+      
+      if (isReallyConnected) {
+        setIsOnline(true);
+        setHasNetworkError(false);
+        // Automatically attempt to sync pending operations when coming back online
+        syncPendingOperations();
+      }
     };
 
     const handleOffline = () => {
@@ -34,14 +66,23 @@ export function useOffline() {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Initial check for pending operations
+    // Initial connectivity check and pending operations check
+    checkNetworkConnection();
     checkPendingOperations();
+
+    // Set up periodic connection check (every 30 seconds)
+    const connectionCheckInterval = setInterval(() => {
+      if (navigator.onLine) {
+        checkNetworkConnection();
+      }
+    }, 30000);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      clearInterval(connectionCheckInterval);
     };
-  }, []);
+  }, [checkNetworkConnection]);
 
   // Listen for service worker messages
   useEffect(() => {
@@ -202,6 +243,8 @@ export function useOffline() {
     isOnline,
     isSyncing,
     pendingActions,
+    hasNetworkError,
+    checkNetworkConnection,
     syncPendingOperations,
     performOfflineTaskOperation
   };

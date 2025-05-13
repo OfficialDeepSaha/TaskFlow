@@ -3,94 +3,270 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#3b82f6">
     <title>TaskFlow - Offline</title>
     <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --secondary: #6366f1;
+            --text-light: #f8fafc;
+            --text-dark: #1e293b;
+            --background: linear-gradient(135deg, #3b82f6, #6366f1);
+            --card-bg: rgba(255, 255, 255, 0.15);
+            --success: #10b981;
+            --error: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
             margin: 0;
             padding: 0;
-            background: linear-gradient(to bottom right, #3b82f6, #6366f1);
-            color: white;
-            height: 100vh;
+            background: var(--background);
+            color: var(--text-light);
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             text-align: center;
+            overflow-x: hidden;
         }
+
         .offline-container {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            padding: 2rem;
-            border-radius: 1rem;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            padding: 2.5rem;
+            border-radius: 1.25rem;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
             max-width: 90%;
             width: 500px;
+            animation: fadeIn 0.5s ease-out;
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         h1 {
-            font-size: 2rem;
+            font-size: 2.5rem;
             margin-bottom: 1rem;
+            font-weight: 700;
         }
+
         p {
-            font-size: 1.1rem;
-            margin-bottom: 1.5rem;
-            opacity: 0.9;
+            font-size: 1.15rem;
+            margin-bottom: 1.75rem;
+            opacity: 0.95;
+            line-height: 1.6;
         }
+
         .icon {
-            font-size: 4rem;
-            margin-bottom: 1rem;
+            font-size: 4.5rem;
+            margin-bottom: 1.25rem;
+            animation: pulse 2s infinite;
         }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .button-container {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+        }
+
         button {
             background-color: white;
-            color: #3b82f6;
+            color: var(--primary);
             border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 0.5rem;
+            padding: 0.85rem 1.75rem;
+            border-radius: 0.75rem;
             font-weight: 600;
+            font-size: 1.05rem;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
         }
+
+        button.secondary {
+            background-color: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
         button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
         }
+
+        button:active {
+            transform: translateY(-1px);
+        }
+
         .status {
+            margin-top: 1.25rem;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            font-size: 0.95rem;
+            background-color: rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .status.online {
+            background-color: rgba(16, 185, 129, 0.2);
+        }
+
+        .status.offline {
+            background-color: rgba(239, 68, 68, 0.2);
+        }
+
+        .attempts {
             margin-top: 1rem;
-            font-size: 0.9rem;
-            opacity: 0.8;
+            font-size: 0.85rem;
+            opacity: 0.7;
+        }
+
+        .tips {
+            margin-top: 2rem;
+            text-align: left;
+            background: rgba(0, 0, 0, 0.1);
+            padding: 1.25rem;
+            border-radius: 0.75rem;
+        }
+
+        .tips h3 {
+            margin-bottom: 0.75rem;
+            font-size: 1.1rem;
+        }
+
+        .tips ul {
+            margin-left: 1.5rem;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .tips li {
+            margin-bottom: 0.5rem;
+        }
+
+        .hidden {
+            display: none;
         }
     </style>
 </head>
 <body>
     <div class="offline-container">
-        <div class="icon">📶</div>
+        <div class="icon" id="connection-icon">📶</div>
         <h1>You're Offline</h1>
-        <p>You can still use TaskFlow to view and modify your tasks. Changes will sync once you're connected again.</p>
-        <button id="retry-button">Try to Reconnect</button>
-        <div class="status" id="status-message">Checking connection...</div>
+        <p>Don't worry! TaskFlow is built to work offline. You can still view and modify your tasks, and all changes will sync automatically when you reconnect.</p>
+        
+        <div class="button-container">
+            <button id="retry-button">Try to Reconnect</button>
+            <button id="home-button" class="secondary">Return to App</button>
+        </div>
+
+        <div class="status offline" id="status-message">Currently offline. Waiting to reconnect...</div>
+        <div class="attempts" id="attempt-counter">Reconnection attempts: 0</div>
+
+        <div class="tips">
+            <h3>While You're Offline</h3>
+            <ul>
+                <li>You can view all previously loaded tasks</li>
+                <li>Create new tasks or update existing ones</li>
+                <li>All changes are stored locally</li>
+                <li>When you're back online, everything will sync automatically</li>
+            </ul>
+        </div>
     </div>
 
     <script>
-        // Check connection status periodically
+        // Variables for tracking reconnection attempts
+        let reconnectionAttempts = 0;
+        let autoCheckInterval = null;
+        const statusMessage = document.getElementById('status-message');
+        const attemptCounter = document.getElementById('attempt-counter');
+        const connectionIcon = document.getElementById('connection-icon');
+        const retryButton = document.getElementById('retry-button');
+        const homeButton = document.getElementById('home-button');
+
+        // Check connection status
         function checkConnection() {
-            const statusMessage = document.getElementById('status-message');
-            const retryButton = document.getElementById('retry-button');
+            reconnectionAttempts++;
+            attemptCounter.textContent = `Reconnection attempts: ${reconnectionAttempts}`;
             
             if (navigator.onLine) {
-                statusMessage.textContent = 'Connected! Redirecting...';
+                // We're online!
+                clearInterval(autoCheckInterval);
+                statusMessage.textContent = 'Connected! Redirecting to the app...';
+                statusMessage.classList.remove('offline');
+                statusMessage.classList.add('online');
+                connectionIcon.textContent = '✅';
+                retryButton.disabled = true;
+                
+                // Redirect after a brief delay
                 setTimeout(() => {
                     window.location.href = '/';
-                }, 1000);
+                }, 1500);
             } else {
+                // Still offline
                 statusMessage.textContent = 'Still offline. You can continue using the app with limited functionality.';
+                statusMessage.classList.add('offline');
+                statusMessage.classList.remove('online');
+                connectionIcon.textContent = '📶';
+                
+                // If this isn't an automatic check, set up interval checking
+                if (!autoCheckInterval) {
+                    autoCheckInterval = setInterval(checkConnection, 10000); // Check every 10 seconds
+                }
             }
         }
         
+        // Try accessing the service worker cache
+        async function tryAccessCache() {
+            if ('caches' in window) {
+                try {
+                    const cache = await caches.open('team-task-tracker-static-v3');
+                    const cachedResponse = await cache.match('/');
+                    return !!cachedResponse;
+                } catch (err) {
+                    console.error('Error checking cache:', err);
+                    return false;
+                }
+            }
+            return false;
+        }
+        
         // Event listeners
-        document.getElementById('retry-button').addEventListener('click', () => {
-            const statusMessage = document.getElementById('status-message');
+        retryButton.addEventListener('click', () => {
             statusMessage.textContent = 'Checking connection...';
             checkConnection();
+        });
+
+        // Home button returns to the app regardless of connection status
+        homeButton.addEventListener('click', async () => {
+            const hasCachedHome = await tryAccessCache();
+            if (hasCachedHome) {
+                window.location.href = '/';
+            } else {
+                statusMessage.textContent = 'No cached version available yet. Please connect to the internet first.';
+                statusMessage.classList.add('offline');
+            }
         });
         
         // Check connection on page load
@@ -98,6 +274,11 @@
         
         // Check connection when online status changes
         window.addEventListener('online', checkConnection);
+        window.addEventListener('offline', () => {
+            statusMessage.textContent = 'Connection lost. You are offline.';
+            statusMessage.classList.add('offline');
+            statusMessage.classList.remove('online');
+        });
     </script>
 </body>
 </html>
